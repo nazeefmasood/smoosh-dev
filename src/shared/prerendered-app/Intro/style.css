@@ -178,8 +178,8 @@
 
 .toolTabActive,
 .toolTabActive:hover {
-  background: var(--color-ink-black);
-  color: var(--paper);
+  background: var(--action-gradient);
+  color: var(--color-ink-black);
 }
 
 /* ---- Dropzone (sharp editorial panel) ---- */

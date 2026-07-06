@@ -100,8 +100,8 @@
 
 .tabActive,
 .tabActive:hover {
-  background: var(--color-ink-black);
-  color: var(--paper);
+  background: var(--action-gradient);
+  color: var(--color-ink-black);
 }
 
 .navLink {
@@ -202,8 +202,8 @@
 
 .modeTabActive,
 .modeTabActive:hover {
-  background: var(--color-ink-black);
-  color: var(--paper);
+  background: var(--action-gradient);
+  color: var(--color-ink-black);
 }
 
 .encoderField {
