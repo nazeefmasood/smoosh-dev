@@ -224,8 +224,8 @@ export default class Intro extends Component<Props, State> {
           <h1>
             {tool === 'watermark' ? (
               <Fragment>
-                Remove <span class={style.accent}>Gemini watermarks</span>,
-                privately.
+                Remove watermarks.{' '}
+                <span class={style.accent}>Clean, private,</span> pixel-perfect.
               </Fragment>
             ) : (
               <Fragment>
@@ -335,10 +335,15 @@ export default class Intro extends Component<Props, State> {
                   />
                 </svg>
               </div>
-              <h3>Dramatically smaller</h3>
+              <h3>
+                {tool === 'watermark'
+                  ? 'Mathematically exact'
+                  : 'Dramatically smaller'}
+              </h3>
               <p>
-                Cut file sizes by up to 90% with modern codecs like AVIF, WebP
-                and JXL — without the visible quality loss.
+                {tool === 'watermark'
+                  ? 'Reverse alpha blending inverts the exact blend Gemini applied — a precise removal, not AI inpainting or guesswork.'
+                  : 'Cut file sizes by up to 90% with modern codecs like AVIF, WebP and JXL — without the visible quality loss.'}
               </p>
             </div>
             <div class={style.feature}>
@@ -361,8 +366,9 @@ export default class Intro extends Component<Props, State> {
               </div>
               <h3>Compare side by side</h3>
               <p>
-                A built-in before / after slider shows exactly what each codec
-                and quality setting costs you, pixel for pixel.
+                {tool === 'watermark'
+                  ? 'A built-in before / after slider shows the original and the cleaned image, pixel for pixel.'
+                  : 'A built-in before / after slider shows exactly what each codec and quality setting costs you, pixel for pixel.'}
               </p>
             </div>
             <div class={style.feature}>
@@ -388,12 +394,7 @@ export default class Intro extends Component<Props, State> {
         <footer class={style.footer}>
           <div class={style.footerInner}>
             <div class={style.footerBrand}>
-              <img
-                class={style.footerFullLogo}
-                src={logoFull}
-                alt="Smoosh"
-                height="40"
-              />
+              <img class={style.footerFullLogo} src={logoFull} alt="Smoosh" />
               <p class={style.footerTag}>
                 Private, in-browser image tools. Compress, convert, and clean up
                 images — your files never leave your device.
