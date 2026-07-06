@@ -109,6 +109,30 @@ export default class Batch extends Component<Props, State> {
 
   private onAddFilesClick = () => this.fileInput?.click();
 
+  private addFiles = (files: File[]) => {
+    const imgs = files.filter((f) => f.type.startsWith('image/'));
+    if (!imgs.length) return;
+    this.setState((prev) => ({
+      items: [
+        ...prev.items,
+        ...imgs.map((file) => ({
+          id: nextId(),
+          file,
+          previewUrl: URL.createObjectURL(file),
+          status: 'pending' as ItemStatus,
+        })),
+      ],
+    }));
+  };
+
+  private onDrop = (event: DragEvent) => {
+    event.preventDefault();
+    this.addFiles(Array.from(event.dataTransfer?.files ?? []));
+  };
+
+  private onDragOver = (event: DragEvent) => event.preventDefault();
+  private onDragLeave = (event: DragEvent) => event.preventDefault();
+
   private onFileChange = (e: Event) => {
     const input = e.target as HTMLInputElement;
     const files = input.files ? Array.from(input.files) : [];
@@ -221,167 +245,203 @@ export default class Batch extends Component<Props, State> {
 
     return (
       <div class={style.batch}>
-        <header class={style.topbar}>
-          <button class={style.iconBtn} onClick={onBack} aria-label="Back">
-            <svg viewBox="0 0 24 24" fill="none">
-              <path
-                d="M15 6l-6 6 6 6"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </button>
-          <div class={style.topbarTitle}>
-            <strong>Batch compress</strong>
-            <span>
-              {items.length} image{items.length === 1 ? '' : 's'}
-              {doneCount > 0 ? ` · ${doneCount} done` : ''}
-            </span>
-          </div>
-          <div class={style.topbarActions}>
-            <label class={style.encoderField}>
-              <span>Format</span>
-              <select
-                value={encoderType}
-                onChange={this.onEncoderChange}
-                disabled={processing}
-              >
-                {BATCH_ENCODERS.map((t) => (
-                  <option value={t}>{encoderMap[t].meta.label}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </header>
-
-        <div class={style.toolbar}>
-          <input
-            ref={(el: HTMLInputElement | null) => {
-              this.fileInput = el ?? undefined;
-            }}
-            class={style.hide}
-            type="file"
-            multiple
-            accept="image/*"
-            onChange={this.onFileChange}
-          />
-          <button class={style.btnGhost} onClick={this.onAddFilesClick}>
-            + Add images
-          </button>
-          {items.length > 0 && !processing && (
-            <button class={style.btnGhost} onClick={this.clearAll}>
-              Clear all
+        <input
+          ref={(el: HTMLInputElement | null) => {
+            this.fileInput = el ?? undefined;
+          }}
+          class={style.hide}
+          type="file"
+          multiple
+          accept="image/*"
+          onChange={this.onFileChange}
+        />
+        <div class={style.wrap}>
+          <header class={style.head}>
+            <button class={style.iconBtn} onClick={onBack} aria-label="Back">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M15 6l-6 6 6 6"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
             </button>
+            <div class={style.headTitle}>
+              <strong>Batch compress</strong>
+              <span>
+                {items.length} image{items.length === 1 ? '' : 's'}
+                {doneCount > 0 ? ` · ${doneCount} done` : ''}
+              </span>
+            </div>
+            <div class={style.headRight}>
+              <label class={style.encoderField}>
+                <span>Format</span>
+                <select
+                  value={encoderType}
+                  onChange={this.onEncoderChange}
+                  disabled={processing}
+                >
+                  {BATCH_ENCODERS.map((t) => (
+                    <option value={t}>{encoderMap[t].meta.label}</option>
+                  ))}
+                </select>
+              </label>
+              {items.length > 0 && !processing && (
+                <button class={style.btnGhost} onClick={this.clearAll}>
+                  Clear
+                </button>
+              )}
+              {processing ? (
+                <button class={style.btnGhost} onClick={this.cancel}>
+                  Cancel
+                </button>
+              ) : (
+                items.length > 0 && (
+                  <button class={style.btnPrimary} onClick={this.processAll}>
+                    {allDone ? 'Re-process' : `Process all (${items.length})`}
+                  </button>
+                )
+              )}
+              {doneCount > 0 && (
+                <button class={style.btnPrimary} onClick={this.downloadAll}>
+                  Download all ({doneCount})
+                </button>
+              )}
+            </div>
+          </header>
+
+          <p class={style.sub}>
+            Compress many images at once with a single format. Everything runs
+            locally in your browser — your files aren't uploaded.
+          </p>
+
+          {totalResult > 0 && (
+            <div class={style.summary}>
+              <span>
+                Total: {prettyBytes(totalOriginal)} →{' '}
+                <strong>{prettyBytes(totalResult)}</strong>
+              </span>
+              <span class={style.savedBadge}>{saved}% smaller</span>
+            </div>
           )}
-          <div class={style.spacer} />
-          {processing ? (
-            <button class={style.btnGhost} onClick={this.cancel}>
-              Cancel
+
+          {items.length === 0 ? (
+            <button
+              class={style.dropzone}
+              onClick={this.onAddFilesClick}
+              onDrop={this.onDrop}
+              onDragOver={this.onDragOver}
+              onDragLeave={this.onDragLeave}
+            >
+              <div class={style.dropIcon} aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M12 16V4m0 0L8 8m4-4 4 4"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <path
+                    d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                  />
+                </svg>
+              </div>
+              <div class={style.dropTitle}>Drop images to compress</div>
+              <div class={style.dropHint}>
+                or <span>browse files</span> · applies one format to all
+              </div>
             </button>
           ) : (
-            items.length > 0 && (
-              <button class={style.btnPrimary} onClick={this.processAll}>
-                {allDone ? 'Re-process all' : `Process all (${items.length})`}
-              </button>
-            )
-          )}
-          {doneCount > 0 && (
-            <button class={style.btnPrimary} onClick={this.downloadAll}>
-              Download all ({doneCount})
-            </button>
-          )}
-        </div>
-
-        {totalResult > 0 && (
-          <div class={style.summary}>
-            <span>
-              Total: {prettyBytes(totalOriginal)} →{' '}
-              <strong>{prettyBytes(totalResult)}</strong>
-            </span>
-            <span class={style.savedBadge}>{saved}% smaller</span>
-          </div>
-        )}
-
-        {items.length === 0 ? (
-          <div class={style.empty}>
-            <p>No images in the queue.</p>
-            <button class={style.btnPrimary} onClick={this.onAddFilesClick}>
-              Add images
-            </button>
-          </div>
-        ) : (
-          <div class={style.list}>
-            {items.map((item) => {
-              const reduced =
-                item.resultFile && item.resultFile.size < item.file.size
-                  ? Math.round(
-                      (1 - item.resultFile.size / item.file.size) * 100,
-                    )
-                  : undefined;
-              return (
-                <div class={style.row} data-status={item.status}>
-                  <img
-                    class={style.thumb}
-                    src={item.previewUrl}
-                    alt={item.file.name}
-                  />
-                  <div class={style.rowMeta}>
-                    <div class={style.rowName}>{item.file.name}</div>
-                    <div class={style.rowSizes}>
-                      {prettyBytes(item.file.size)}
-                      {item.resultFile && (
-                        <span>
-                          {' → '}
-                          <strong>{prettyBytes(item.resultFile.size)}</strong>
-                          {reduced !== undefined && (
-                            <span
-                              class={reduced >= 0 ? style.saved : style.grew}
-                            >
-                              {' '}
-                              ({reduced >= 0 ? '−' : '+'}
-                              {Math.abs(reduced)}%)
+            <div class={style.hasItems}>
+              <div class={style.listHead}>
+                <button class={style.btnAdd} onClick={this.onAddFilesClick}>
+                  + Add more
+                </button>
+              </div>
+              <div class={style.list}>
+                {items.map((item) => {
+                  const reduced =
+                    item.resultFile && item.resultFile.size < item.file.size
+                      ? Math.round(
+                          (1 - item.resultFile.size / item.file.size) * 100,
+                        )
+                      : undefined;
+                  return (
+                    <div class={style.row} data-status={item.status}>
+                      <img
+                        class={style.thumb}
+                        src={item.previewUrl}
+                        alt={item.file.name}
+                      />
+                      <div class={style.rowMeta}>
+                        <div class={style.rowName}>{item.file.name}</div>
+                        <div class={style.rowSizes}>
+                          {prettyBytes(item.file.size)}
+                          {item.resultFile && (
+                            <span>
+                              {' → '}
+                              <strong>
+                                {prettyBytes(item.resultFile.size)}
+                              </strong>
+                              {reduced !== undefined && (
+                                <span
+                                  class={
+                                    reduced >= 0 ? style.saved : style.grew
+                                  }
+                                >
+                                  {' '}
+                                  ({reduced >= 0 ? '−' : '+'}
+                                  {Math.abs(reduced)}%)
+                                </span>
+                              )}
                             </span>
                           )}
-                        </span>
+                        </div>
+                        {item.status === 'error' && (
+                          <div class={style.rowError}>{item.error}</div>
+                        )}
+                      </div>
+                      <div class={style.rowStatus}>
+                        {item.status === 'processing' && (
+                          <span class={style.statusProcessing}>
+                            Processing…
+                          </span>
+                        )}
+                        {item.status === 'done' && item.resultUrl && (
+                          <a
+                            class={style.dlLink}
+                            href={item.resultUrl}
+                            download={item.resultFile?.name ?? item.file.name}
+                          >
+                            Download
+                          </a>
+                        )}
+                        {item.status === 'pending' && (
+                          <span class={style.statusPending}>Queued</span>
+                        )}
+                      </div>
+                      {!processing && (
+                        <button
+                          class={style.removeBtn}
+                          onClick={() => this.removeItem(item.id)}
+                          aria-label={`Remove ${item.file.name}`}
+                        >
+                          ✕
+                        </button>
                       )}
                     </div>
-                    {item.status === 'error' && (
-                      <div class={style.rowError}>{item.error}</div>
-                    )}
-                  </div>
-                  <div class={style.rowStatus}>
-                    {item.status === 'processing' && (
-                      <span class={style.statusProcessing}>Processing…</span>
-                    )}
-                    {item.status === 'done' && item.resultUrl && (
-                      <a
-                        class={style.dlLink}
-                        href={item.resultUrl}
-                        download={item.resultFile?.name ?? item.file.name}
-                      >
-                        Download
-                      </a>
-                    )}
-                    {item.status === 'pending' && (
-                      <span class={style.statusPending}>Queued</span>
-                    )}
-                  </div>
-                  {!processing && (
-                    <button
-                      class={style.removeBtn}
-                      onClick={() => this.removeItem(item.id)}
-                      aria-label={`Remove ${item.file.name}`}
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     );
   }

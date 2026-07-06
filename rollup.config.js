@@ -87,6 +87,7 @@ export default async function ({ watch }) {
       'src/features-worker-worker-bridge',
       'src/sw',
       'src/worker-shared',
+      'src/vendor',
       'codecs',
     ]),
     urlPlugin(),

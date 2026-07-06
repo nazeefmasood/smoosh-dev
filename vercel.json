@@ -5,6 +5,10 @@
   "redirects": [
     { "source": "/editor", "destination": "/", "permanent": false }
   ],
+  "rewrites": [
+    { "source": "/watermark", "destination": "/" },
+    { "source": "/batch", "destination": "/" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

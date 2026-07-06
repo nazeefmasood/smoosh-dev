@@ -106,6 +106,14 @@ export default class App extends Component<Props, State> {
     });
 
     window.addEventListener('popstate', this.onPopState);
+
+    // Open the right tool on a direct/deep-linked load (e.g. /watermark).
+    const initialPath = location.pathname;
+    if (initialPath === ROUTE_WATERMARK) {
+      this.setState({ isWatermarkOpen: true, files: [] });
+    } else if (initialPath === ROUTE_BATCH) {
+      this.setState({ isBatchOpen: true, files: [] });
+    }
   }
 
   private onFileDrop = ({ files }: FileDropEvent) => {
@@ -217,22 +225,20 @@ export default class App extends Component<Props, State> {
         <file-drop onfiledrop={this.onFileDrop} class={style.drop}>
           {showSpinner ? (
             <loading-spinner class={style.appLoader} />
-          ) : isBatchOpen && files && files.length > 0 ? (
+          ) : isBatchOpen ? (
             Batch && (
               <Batch
-                files={files}
+                files={files ?? []}
                 showSnack={this.showSnack}
                 onBack={back}
-                onAddFiles={this.handleFiles}
               />
             )
-          ) : isWatermarkOpen && files && files.length > 0 ? (
+          ) : isWatermarkOpen ? (
             Watermark && (
               <Watermark
-                files={files}
+                files={files ?? []}
                 showSnack={this.showSnack}
                 onBack={back}
-                onAddFiles={this.handleFiles}
               />
             )
           ) : isEditorOpen ? (

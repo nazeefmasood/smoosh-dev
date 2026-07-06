@@ -18,7 +18,8 @@
       "client/*": ["src/client/*"],
       "shared/*": ["src/shared/*"],
       "features/*": ["src/features/*"],
-      "worker-shared/*": ["src/worker-shared/*"]
+      "worker-shared/*": ["src/worker-shared/*"],
+      "vendor/*": ["src/vendor/*"]
     }
   }
 }
