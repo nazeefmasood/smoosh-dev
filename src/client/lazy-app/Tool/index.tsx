@@ -53,9 +53,13 @@ interface State {
   subMode: SubMode;
   encoderType: EncoderType;
   processing: boolean;
+  processedCount: number;
   modalId?: string;
   comparePct: number;
 }
+
+/** Files above this size get a heads-up that processing may be slow. */
+const LARGE_FILE_BYTES = 40 * 1024 * 1024;
 
 let idCounter = 0;
 const nextId = () => `t-${idCounter++}`;
@@ -71,6 +75,16 @@ function encoderStateFor(type: EncoderType): EncoderState {
     type,
     options: (encoderMap[type].meta as any).defaultOptions,
   } as EncoderState;
+}
+
+/** The done result with the smallest output file for an item, if any. */
+function smallestResult(item: Item): Result | undefined {
+  let best: Result | undefined;
+  for (const r of item.results) {
+    if (r.status !== 'done' || !r.file) continue;
+    if (!best || r.file!.size < best.file!.size) best = r;
+  }
+  return best;
 }
 
 function newItem(file: File): Item {
@@ -139,6 +153,7 @@ export default class Tool extends Component<Props, State> {
     subMode: 'single',
     encoderType: 'mozJPEG',
     processing: false,
+    processedCount: 0,
     comparePct: 50,
   };
 
@@ -253,8 +268,15 @@ export default class Tool extends Component<Props, State> {
             encoderType: this.state.encoderType,
           };
     const targets = targetsFor(this.props.mode, subMode, encoderType);
+
+    if (this.state.items.some((i) => i.file.size > LARGE_FILE_BYTES)) {
+      this.props.showSnack(
+        'Large images detected — processing may take a moment.',
+      );
+    }
+
     this.abortController = new AbortController();
-    this.setState({ processing: true });
+    this.setState({ processing: true, processedCount: 0 });
 
     try {
       for (const item of this.state.items) {
@@ -283,6 +305,7 @@ export default class Tool extends Component<Props, State> {
               error: 'Failed',
             });
           }
+          this.setState((p) => ({ processedCount: p.processedCount + 1 }));
           continue;
         }
 
@@ -326,6 +349,7 @@ export default class Tool extends Component<Props, State> {
             this.putResult(item.id, t.key, { status: 'error', error: msg });
           }
         }
+        this.setState((p) => ({ processedCount: p.processedCount + 1 }));
       }
     } finally {
       this.setState({ processing: false });
@@ -336,17 +360,28 @@ export default class Tool extends Component<Props, State> {
     this.abortController?.abort();
     this.setState({ processing: false });
   };
+  private triggerDownload(r: Result) {
+    if (!r.url || !r.file) return;
+    const a = document.createElement('a');
+    a.href = r.url;
+    a.download = r.file.name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
   private downloadAll = () => {
     for (const item of this.state.items)
       for (const r of item.results)
-        if (r.status === 'done' && r.url && r.file) {
-          const a = document.createElement('a');
-          a.href = r.url;
-          a.download = r.file.name;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-        }
+        if (r.status === 'done') this.triggerDownload(r);
+  };
+
+  /** Download only the smallest encoded result for each item. */
+  private downloadSmallest = () => {
+    for (const item of this.state.items) {
+      const best = smallestResult(item);
+      if (best) this.triggerDownload(best);
+    }
   };
 
   private openModal = (id: string) =>
@@ -357,7 +392,15 @@ export default class Tool extends Component<Props, State> {
 
   render(
     { onBack, mode, onModeChange }: Props,
-    { items, subMode, encoderType, processing, modalId, comparePct }: State,
+    {
+      items,
+      subMode,
+      encoderType,
+      processing,
+      processedCount,
+      modalId,
+      comparePct,
+    }: State,
   ) {
     const isWatermark = mode === 'watermark';
     const doneCount = items.reduce(
@@ -506,9 +549,16 @@ export default class Tool extends Component<Props, State> {
                 </button>
               )}
               {processing ? (
-                <button class={style.btnGhost} onClick={this.cancel}>
-                  Cancel
-                </button>
+                <Fragment>
+                  <span class={style.progress}>
+                    <span class={style.spinner} aria-hidden="true" />
+                    Processing {Math.min(processedCount + 1, items.length)}/
+                    {items.length}…
+                  </span>
+                  <button class={style.btnGhost} onClick={this.cancel}>
+                    Cancel
+                  </button>
+                </Fragment>
               ) : (
                 <button class={style.btnPrimary} onClick={this.processAll}>
                   {isWatermark
@@ -518,7 +568,15 @@ export default class Tool extends Component<Props, State> {
                     : `Process all (${items.length})`}
                 </button>
               )}
-              {doneCount > 0 && (
+              {doneCount > 0 &&
+                !processing &&
+                !isWatermark &&
+                subMode === 'all' && (
+                  <button class={style.btnAdd} onClick={this.downloadSmallest}>
+                    Download smallest ({items.length})
+                  </button>
+                )}
+              {doneCount > 0 && !processing && (
                 <button class={style.btnPrimary} onClick={this.downloadAll}>
                   Download all ({doneCount})
                 </button>
@@ -576,6 +634,13 @@ export default class Tool extends Component<Props, State> {
               )}
               {items.map((item) => {
                 const byKey = new Map(item.results.map((r) => [r.key, r]));
+                const doneResults = item.results.filter(
+                  (r) => r.status === 'done',
+                );
+                const best =
+                  !isWatermark && doneResults.length > 1
+                    ? smallestResult(item)
+                    : undefined;
                 return (
                   <div class={style.row}>
                     <img
@@ -596,8 +661,14 @@ export default class Tool extends Component<Props, State> {
                             <div
                               class={style.formatChip}
                               data-status={r?.status}
+                              data-best={best && r && r.key === best.key}
                             >
-                              <span class={style.formatLabel}>{t.label}</span>
+                              <span class={style.formatLabel}>
+                                {t.label}
+                                {best && r && r.key === best.key && (
+                                  <span class={style.bestTag}>smallest</span>
+                                )}
+                              </span>
                               {r?.status === 'processing' && (
                                 <span class={style.formatMeta}>…</span>
                               )}

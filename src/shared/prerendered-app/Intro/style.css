@@ -182,25 +182,24 @@
   color: var(--paper);
 }
 
-/* ---- Dropzone (bordered card) ---- */
+/* ---- Dropzone (sharp editorial panel) ---- */
 .dropzone {
-  margin-top: var(--spacing-24);
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-large-card);
-  background: var(--tint-sage);
-  padding: var(--spacing-48) var(--spacing-24);
+  margin-top: var(--spacing-32);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-image);
+  background: transparent;
+  padding: var(--spacing-80) var(--spacing-24);
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .dropzone:hover {
-  background: var(--color-pale-sage);
+  border-color: var(--color-ink-black);
 }
 
 .dragging {
-  background: var(--color-pale-sage);
+  background: var(--color-powder-blue);
   border-color: var(--color-ink-black);
-  border-style: solid;
 }
 
 .dropzoneInner {
@@ -211,7 +210,7 @@
 }
 
 .dropIcon {
-  color: var(--color-deep-violet);
+  color: var(--color-ink-black);
 }
 
 .dropIcon svg {
@@ -234,8 +233,10 @@
 }
 
 .browse {
-  color: var(--color-deep-violet);
-  font-weight: var(--fw-medium);
+  color: var(--color-ink-black);
+  font-weight: var(--fw-regular);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .dropActions {
@@ -277,14 +278,15 @@
 }
 
 .format {
-  font-size: var(--text-micro);
-  font-weight: var(--fw-medium);
-  letter-spacing: 0.02em;
-  color: var(--color-burnt-amber);
-  background: var(--paper);
-  border: 1px solid var(--color-burnt-amber);
+  font-size: var(--text-caption);
+  font-weight: var(--fw-regular);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink-black);
+  background: transparent;
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-pill);
-  padding: 4px 12px;
+  padding: 6px 12px;
 }
 
 /* ============================================================
@@ -301,21 +303,16 @@
 }
 
 .feature {
-  border: 1px solid var(--line-strong);
   border-radius: var(--radius-card);
-  padding: var(--card-padding);
+  border-top: 1px solid var(--line-strong);
+  padding: var(--spacing-24) 0 0;
 }
 
-.feature:nth-child(1) {
-  background: var(--color-pale-sage);
-}
-
+/* One chromatic rupture — the middle card takes a mint surface. */
 .feature:nth-child(2) {
-  background: var(--color-lavender-mist);
-}
-
-.feature:nth-child(3) {
-  background: var(--color-dusty-rose);
+  background: var(--color-mint-wash);
+  border-top: 0;
+  padding: var(--card-padding);
 }
 
 .featureIcon {
@@ -330,8 +327,8 @@
 .feature h3 {
   margin: var(--spacing-16) 0 var(--spacing-8);
   font-size: var(--text-subheading);
-  font-weight: var(--fw-medium);
-  letter-spacing: -0.01em;
+  font-weight: var(--fw-light);
+  letter-spacing: -0.018em;
   color: var(--color-ink-black);
 }
 
@@ -339,7 +336,7 @@
   margin: 0;
   font-size: var(--text-body-sm);
   line-height: var(--leading-body-sm);
-  color: var(--color-slate-gray);
+  color: var(--color-graphite);
 }
 
 /* ============================================================
