@@ -1,38 +1,63 @@
-# [Squoosh]!
+# Smoosh
 
-[Squoosh] is an image compression web app that reduces image sizes through numerous formats.
+**Smoosh** is a privacy-first image toolkit that runs entirely in your browser. Shrink and convert images with industry-standard codecs, compare formats side by side, batch a whole folder at once, and cleanly remove Gemini AI watermarks — all without your files ever leaving your device.
 
-# Privacy
+Smoosh is a fork of [Squoosh] by Google Chrome Labs, extended with a unified two-tool workflow.
 
-Squoosh does not send your image to a server. All image compression processes locally.
+## Tools
 
-However, Squoosh utilizes Google Analytics to collect the following:
+### Compress
 
-- [Basic visitor data](https://support.google.com/analytics/answer/6004245?ref_topic=2919631).
-- The before and after image size value.
-- If Squoosh PWA, the type of Squoosh installation.
-- If Squoosh PWA, the installation time and date.
+Re-encode and convert images between modern formats, tuning quality with live before/after previews.
 
-# Developing
+- **Formats:** JPEG, PNG, WebP, AVIF, JXL, WebP2 (WP2), and GIF
+- **Side-by-side comparison** to weigh quality against file size
+- **Batch mode** — drop a whole folder and export in multiple formats at once
 
-To develop for Squoosh:
+### Watermark
 
-1. Clone the repository
-1. To install node packages, run:
+Remove watermarks from Gemini-generated images using **reverse alpha blending** — a mathematically exact inversion of the blend operation, not AI inpainting. If no watermark is detected, the output is left unchanged.
+
+- Exact, reversible removal (not a reconstruction)
+- Batch supported
+- Fully local — nothing is uploaded
+
+## Privacy
+
+Smoosh never sends your images to a server. All processing — compression, conversion, and watermark removal — happens locally in your browser via WebAssembly codecs.
+
+Smoosh uses Google Analytics to collect anonymous usage data:
+
+- [Basic visitor data](https://support.google.com/analytics/answer/6004245?ref_topic=2919631)
+- Before/after image size values
+- For the installed PWA: installation type, time, and date
+
+## Developing
+
+1. Clone the repository:
+   ```sh
+   git clone git@github.com:nazeefmasood/smoosh-dev.git
+   cd smoosh-dev
+   ```
+2. Install dependencies:
    ```sh
    npm install
    ```
-1. Then build the app by running:
+3. Build the app:
    ```sh
    npm run build
    ```
-1. After building, start the development server by running:
+4. Start the development server:
    ```sh
    npm run dev
    ```
 
-# Contributing
+## Contributing
 
-Squoosh is an open-source project that appreciates all community involvement. To contribute to the project, follow the [contribute guide](/CONTRIBUTING.md).
+Contributions are welcome. See the [contributing guide](/CONTRIBUTING.md) to get started.
+
+## License
+
+Licensed under the [Apache License 2.0](/LICENSE). Built on [Squoosh], © Google Chrome Labs.
 
 [squoosh]: https://squoosh.app
