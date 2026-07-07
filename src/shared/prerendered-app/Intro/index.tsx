@@ -29,7 +29,7 @@ async function getImageClipboardItem(
   }
 }
 
-type Tool = 'compress' | 'watermark' | 'edit';
+type Tool = 'compress' | 'watermark' | 'edit' | 'metadata';
 
 interface Props {
   tool?: Tool;
@@ -233,6 +233,12 @@ export default class Intro extends Component<Props, State> {
                 <span class={style.accent}>Crop, resize, rotate,</span> in your
                 browser.
               </Fragment>
+            ) : tool === 'metadata' ? (
+              <Fragment>
+                Strip metadata.{' '}
+                <span class={style.accent}>Private, lossless,</span>{' '}
+                pixel-perfect.
+              </Fragment>
             ) : (
               <Fragment>
                 Compress images.{' '}
@@ -245,6 +251,8 @@ export default class Intro extends Component<Props, State> {
               ? 'Smoosh cleanly removes Gemini AI watermarks using reverse alpha blending — a mathematically exact inversion, not AI inpainting. Batch supported, fully private.'
               : tool === 'edit'
               ? 'Crop, resize, rotate and flip your images in one interactive editor — see every change live, then export. Everything runs locally in your browser.'
+              : tool === 'metadata'
+              ? 'Smoosh removes EXIF, GPS, camera and timestamp data from your images — losslessly for JPEG and PNG, so quality is untouched. See exactly what gets removed. Fully private, batch supported.'
               : 'Smoosh shrinks and converts images with industry codecs — right in your browser. Your files never leave your device. Compare codecs side by side and batch a whole folder at once.'}
           </p>
 
@@ -279,6 +287,16 @@ export default class Intro extends Component<Props, State> {
                 onClick={() => onToolChange('watermark')}
               >
                 Watermark remover
+              </button>
+              <button
+                class={`${style.toolTab}${
+                  tool === 'metadata' ? ' ' + style.toolTabActive : ''
+                }`}
+                role="tab"
+                aria-selected={tool === 'metadata'}
+                onClick={() => onToolChange('metadata')}
+              >
+                EXIF strip
               </button>
             </div>
           )}
@@ -448,6 +466,20 @@ export default class Intro extends Component<Props, State> {
                   }
                 >
                   Watermark remover
+                </a>
+                <a
+                  class={style.footerLink}
+                  href="/editor?tool=metadata"
+                  onClick={
+                    onOpenTool
+                      ? (e) => {
+                          e.preventDefault();
+                          onOpenTool('metadata');
+                        }
+                      : undefined
+                  }
+                >
+                  EXIF strip
                 </a>
               </div>
               <div class={style.footerCol}>

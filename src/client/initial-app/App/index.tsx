@@ -36,6 +36,7 @@ function modeFromQuery(): ToolMode {
     const t = new URL(location.href).searchParams.get('tool');
     if (t === 'watermark') return 'watermark';
     if (t === 'edit') return 'edit';
+    if (t === 'metadata') return 'metadata';
     return 'compress';
   } catch {
     return 'compress';

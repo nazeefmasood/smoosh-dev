@@ -7,9 +7,10 @@ import WorkerBridge from '../worker-bridge';
 import { decodeImage, compressImage } from '../pipeline';
 import { encoderMap, EncoderType, EncoderState } from '../feature-meta';
 import { removeWatermarkFromImage } from 'vendor/gwm';
+import { readMeta, stripMeta, MetaResult } from 'vendor/exif';
 import type SnackBarElement from 'shared/custom-els/snack-bar';
 
-export type ToolMode = 'compress' | 'watermark' | 'edit';
+export type ToolMode = 'compress' | 'watermark' | 'edit' | 'metadata';
 
 interface Props {
   files: File[];
@@ -39,6 +40,7 @@ interface Result {
   url?: string;
   applied?: boolean;
   error?: string;
+  lossless?: boolean;
 }
 
 interface Item {
@@ -46,6 +48,8 @@ interface Item {
   file: File;
   previewUrl: string;
   results: Result[];
+  /** Detected metadata (metadata tool). */
+  meta?: MetaResult;
 }
 
 interface State {
@@ -106,6 +110,28 @@ function encoderStateFor(type: EncoderType, quality?: number): EncoderState {
   const options = { ...(encoderMap[type].meta as any).defaultOptions };
   if (quality != null && 'quality' in options) options.quality = quality;
   return { type, options } as EncoderState;
+}
+
+/**
+ * Pick an encoder that preserves the source file's format so tools like the
+ * metadata stripper don't silently change formats. Unknown types → PNG.
+ */
+function encoderForFile(file: File): EncoderType {
+  const type = file.type.toLowerCase();
+  const ext = file.name.slice(file.name.lastIndexOf('.') + 1).toLowerCase();
+  if (type === 'image/jpeg' || ext === 'jpg' || ext === 'jpeg')
+    return 'mozJPEG';
+  if (type === 'image/webp' || ext === 'webp') return 'webP';
+  if (type === 'image/avif' || ext === 'avif') return 'avif';
+  if (type === 'image/png' || ext === 'png') return 'oxiPNG';
+  return 'browserPNG';
+}
+
+/** Human label for a result key. */
+function labelForKey(key: string): string {
+  if (key === 'cleaned') return 'Cleaned';
+  if (key === 'stripped') return 'Stripped';
+  return encoderMap[key as EncoderType].meta.label;
 }
 
 /** The done result with the smallest output file for an item, if any. */
@@ -169,6 +195,9 @@ function targetsFor(
 ): Result[] {
   if (mode === 'watermark') {
     return [{ key: 'cleaned', label: 'Cleaned', status: 'pending' }];
+  }
+  if (mode === 'metadata') {
+    return [{ key: 'stripped', label: 'Stripped', status: 'pending' }];
   }
   const formats = subMode === 'all' ? ALL_FORMATS : [encoderType];
   return formats.map((f) => ({
@@ -273,10 +302,7 @@ export default class Tool extends Component<Props, State> {
                     ...i.results,
                     {
                       key,
-                      label:
-                        key === 'cleaned'
-                          ? 'Cleaned'
-                          : encoderMap[key as EncoderType].meta.label,
+                      label: labelForKey(key),
                       status: 'pending',
                       ...patch,
                     },
@@ -284,6 +310,12 @@ export default class Tool extends Component<Props, State> {
             }
           : i,
       ),
+    }));
+  };
+
+  private putMeta = (itemId: string, meta: MetaResult) => {
+    this.setState((prev) => ({
+      items: prev.items.map((i) => (i.id === itemId ? { ...i, meta } : i)),
     }));
   };
 
@@ -338,6 +370,65 @@ export default class Tool extends Component<Props, State> {
             });
           } catch {
             this.putResult(item.id, 'cleaned', {
+              status: 'error',
+              error: 'Failed',
+            });
+          }
+          this.setState((p) => ({ processedCount: p.processedCount + 1 }));
+          continue;
+        }
+
+        if (this.props.mode === 'metadata') {
+          // Read detected metadata first (shown as the "before"), then strip.
+          let detected: MetaResult;
+          try {
+            detected = await readMeta(item.file);
+          } catch {
+            detected = {
+              format: 'other',
+              fields: [],
+              hasGps: false,
+              metaBytes: 0,
+            };
+          }
+          this.putMeta(item.id, detected);
+          this.putResult(item.id, 'stripped', {
+            status: 'processing',
+            error: undefined,
+          });
+          try {
+            let resultFile: File;
+            let lossless: boolean;
+            const stripped = await stripMeta(item.file);
+            if (stripped) {
+              // Lossless byte rewrite (jpeg/png).
+              resultFile = stripped.file;
+              lossless = stripped.lossless;
+            } else {
+              // Other formats: decode → re-encode in source format (also strips).
+              const data = await decodeImage(
+                signal,
+                item.file,
+                this.workerBridge,
+              );
+              resultFile = await compressImage(
+                signal,
+                data,
+                encoderStateFor(encoderForFile(item.file)),
+                seoName(item.file.name),
+                this.workerBridge,
+              );
+              lossless = false;
+            }
+            const url = URL.createObjectURL(resultFile);
+            this.putResult(item.id, 'stripped', {
+              status: 'done',
+              file: resultFile,
+              url,
+              lossless,
+            });
+          } catch {
+            this.putResult(item.id, 'stripped', {
               status: 'error',
               error: 'Failed',
             });
@@ -433,6 +524,7 @@ export default class Tool extends Component<Props, State> {
     }: State,
   ) {
     const isWatermark = mode === 'watermark';
+    const isMetadata = mode === 'metadata';
     const doneCount = items.reduce(
       (s, i) => s + i.results.filter((r) => r.status === 'done').length,
       0,
@@ -504,6 +596,16 @@ export default class Tool extends Component<Props, State> {
               Watermark remover
             </button>
             <button
+              class={`${style.tab}${
+                mode === 'metadata' ? ' ' + style.tabActive : ''
+              }`}
+              role="tab"
+              aria-selected={mode === 'metadata'}
+              onClick={() => onModeChange('metadata')}
+            >
+              EXIF strip
+            </button>
+            <button
               class={style.navLink}
               onClick={onBack}
               aria-label="Back to home"
@@ -528,6 +630,11 @@ export default class Tool extends Component<Props, State> {
                 Remove <span class={style.accent}>Gemini watermarks</span>,
                 right in your browser.
               </Fragment>
+            ) : isMetadata ? (
+              <Fragment>
+                Strip <span class={style.accent}>EXIF & metadata</span>, keep
+                every pixel.
+              </Fragment>
             ) : (
               <Fragment>
                 Compress into <span class={style.accent}>any format</span>, all
@@ -538,12 +645,14 @@ export default class Tool extends Component<Props, State> {
           <p class={style.heroSub}>
             {isWatermark
               ? 'Drop your Gemini-generated images and Smoosh cleanly removes the watermark using reverse alpha blending — mathematically exact, fully private, batch supported.'
+              : isMetadata
+              ? 'Drop images and Smoosh removes EXIF, GPS, camera and timestamp data — losslessly for JPEG & PNG, so quality is untouched. See exactly what was removed. Fully private, batch supported.'
               : 'Drop images and export each to a single format — or to all formats at once. Everything runs locally in your browser.'}
           </p>
 
           {items.length > 0 && (
             <div class={style.controls}>
-              {!isWatermark && (
+              {mode === 'compress' && (
                 <div class={style.modeToggle}>
                   <button
                     class={`${style.modeTab}${
@@ -563,7 +672,7 @@ export default class Tool extends Component<Props, State> {
                   </button>
                 </div>
               )}
-              {!isWatermark && subMode === 'single' && (
+              {mode === 'compress' && subMode === 'single' && (
                 <label class={style.encoderField}>
                   <span>Format</span>
                   <select
@@ -577,7 +686,7 @@ export default class Tool extends Component<Props, State> {
                   </select>
                 </label>
               )}
-              {!isWatermark &&
+              {mode === 'compress' &&
                 (subMode === 'all' || encoderHasQuality(encoderType)) && (
                   <label class={style.qualityField}>
                     <span>Quality</span>
@@ -618,6 +727,8 @@ export default class Tool extends Component<Props, State> {
                 <button class={style.btnPrimary} onClick={this.processAll}>
                   {isWatermark
                     ? `Remove watermarks (${items.length})`
+                    : isMetadata
+                    ? `Strip metadata (${items.length})`
                     : subMode === 'all'
                     ? `Convert to all formats (${items.length})`
                     : `Process all (${items.length})`}
@@ -656,6 +767,8 @@ export default class Tool extends Component<Props, State> {
               <div class={style.dropTitle}>
                 {isWatermark
                   ? 'Drop Gemini-generated images'
+                  : isMetadata
+                  ? 'Drop images to scrub'
                   : 'Drop images to compress'}
               </div>
               <div class={style.dropHint}>
@@ -752,6 +865,51 @@ export default class Tool extends Component<Props, State> {
                           {item.results[0].applied === false
                             ? 'No watermark detected — output unchanged'
                             : 'Watermark removed'}
+                        </div>
+                      )}
+                      {isMetadata && item.meta && (
+                        <div class={style.metaBox}>
+                          {item.meta.fields.length === 0 ? (
+                            <div class={style.metaEmpty}>
+                              No metadata found — image is already clean
+                              {item.meta.format === 'other'
+                                ? ' (lossless strip not supported for this format; re-encode will be used)'
+                                : ''}
+                              .
+                            </div>
+                          ) : (
+                            <Fragment>
+                              <div class={style.metaHead}>
+                                <span>
+                                  Removed {item.meta.fields.length} field
+                                  {item.meta.fields.length === 1 ? '' : 's'}
+                                  {item.meta.metaBytes > 0
+                                    ? ` · ${prettyBytes(item.meta.metaBytes)}`
+                                    : ''}
+                                </span>
+                                {item.results[0]?.status === 'done' && (
+                                  <span class={style.metaBadge}>
+                                    {item.results[0].lossless
+                                      ? 'Lossless'
+                                      : 'Re-encoded'}
+                                  </span>
+                                )}
+                                {item.meta.hasGps && (
+                                  <span class={style.metaGps}>
+                                    incl. GPS location
+                                  </span>
+                                )}
+                              </div>
+                              <dl class={style.metaList}>
+                                {item.meta.fields.map((f) => (
+                                  <div class={style.metaRow}>
+                                    <dt class={style.metaKey}>{f.label}</dt>
+                                    <dd class={style.metaVal}>{f.value}</dd>
+                                  </div>
+                                ))}
+                              </dl>
+                            </Fragment>
+                          )}
                         </div>
                       )}
                     </div>
