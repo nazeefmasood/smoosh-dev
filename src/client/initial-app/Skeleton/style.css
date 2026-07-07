@@ -1,0 +1,182 @@
+/**
+ * Skeleton load screen — editorial poster system. Bone canvas with warm gray
+ * shimmer blocks; no blue, no circle spinner. Honours reduced motion.
+ */
+
+.skeleton {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  font-family: var(--font-switzer);
+  overflow: hidden;
+}
+
+@keyframes smoosh-shimmer {
+  0% {
+    background-position: -468px 0;
+  }
+  100% {
+    background-position: 468px 0;
+  }
+}
+
+.shimmer,
+.headingLine,
+.subLine,
+.dzLine,
+.dzLineThin,
+.dzButton,
+.dzIcon {
+  background-color: var(--gray-100);
+  background-image: linear-gradient(
+    90deg,
+    var(--gray-100) 0%,
+    var(--gray-200) 20%,
+    var(--gray-100) 40%,
+    var(--gray-100) 100%
+  );
+  background-size: 936px 100%;
+  background-repeat: no-repeat;
+  animation: smoosh-shimmer 1.6s linear infinite;
+  border-radius: var(--radius-pill);
+}
+
+/* ---- Top nav ---- */
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: var(--maxw);
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--spacing-20) var(--gutter);
+  box-sizing: border-box;
+}
+
+.wordBlock {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-10);
+}
+
+.mark {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-card);
+}
+
+.wordText {
+  width: 84px;
+  height: 18px;
+}
+
+.navLink {
+  width: 92px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+}
+
+/* ---- Hero ---- */
+.hero {
+  max-width: var(--maxw);
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--spacing-48) var(--gutter) var(--spacing-32);
+  text-align: center;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.headingLine {
+  height: clamp(34px, 5.5vw, 54px);
+  margin-bottom: 6px;
+  border-radius: var(--radius-pill);
+}
+
+.subLine {
+  height: 14px;
+  border-radius: var(--radius-pill);
+}
+
+/* ---- Dropzone ---- */
+.dropzone {
+  max-width: 720px;
+  width: calc(100% - var(--gutter) * 2);
+  margin: var(--spacing-24) auto 0;
+  padding: var(--spacing-64) var(--spacing-24);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-16);
+  box-sizing: border-box;
+}
+
+.dzIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-card);
+}
+
+.dzLine {
+  height: 16px;
+  border-radius: var(--radius-pill);
+}
+
+.dzLineThin {
+  height: 12px;
+  border-radius: var(--radius-pill);
+}
+
+.dzButton {
+  width: 150px;
+  height: 44px;
+  border-radius: var(--radius-button);
+  margin-top: var(--spacing-8);
+}
+
+/* Tool toggle row (mirrors the landing's Edit/Compress/Watermark pills). */
+.toggleRow {
+  display: inline-flex;
+  gap: var(--spacing-6);
+  padding: 5px;
+  margin-top: var(--spacing-32);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+}
+
+.togglePill {
+  width: 96px;
+  height: 30px;
+  border-radius: var(--radius-pill);
+}
+
+/* Format chips below the dropzone. */
+.formatChips {
+  display: flex;
+  gap: var(--spacing-8);
+  margin-top: var(--spacing-8);
+}
+
+.chip {
+  width: 48px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer,
+  .headingLine,
+  .subLine,
+  .dzLine,
+  .dzLineThin,
+  .dzButton,
+  .dzIcon {
+    animation: none;
+  }
+}

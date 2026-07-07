@@ -10,6 +10,7 @@ import 'add-css:./style.css';
 import 'file-drop-element';
 import 'shared/custom-els/snack-bar';
 import Intro from 'shared/prerendered-app/Intro';
+import Skeleton from 'client/initial-app/Skeleton';
 import 'shared/custom-els/loading-spinner';
 import Tool, { ToolMode } from 'client/lazy-app/Tool';
 
@@ -27,13 +28,14 @@ interface State {
   files: File[];
   isEditorOpen: Boolean;
   Tool?: typeof import('client/lazy-app/Tool').default;
+  Editor?: typeof import('client/lazy-app/Editor').default;
 }
 
 function modeFromQuery(): ToolMode {
   try {
     const t = new URL(location.href).searchParams.get('tool');
     if (t === 'watermark') return 'watermark';
-    if (t === 'resize') return 'resize';
+    if (t === 'edit') return 'edit';
     return 'compress';
   } catch {
     return 'compress';
@@ -71,6 +73,14 @@ export default class App extends Component<Props, State> {
       })
       .catch(() => {
         this.showSnack('Failed to load app');
+      });
+
+    import('client/lazy-app/Editor')
+      .then((module) => {
+        this.setState({ Editor: module.default });
+      })
+      .catch(() => {
+        this.showSnack('Failed to load editor');
       });
 
     swBridgePromise.then(async ({ offliner, getSharedImage }) => {
@@ -135,24 +145,44 @@ export default class App extends Component<Props, State> {
 
   render(
     {}: Props,
-    { activeTool, files, isEditorOpen, Tool, awaitingShareTarget }: State,
+    {
+      activeTool,
+      files,
+      isEditorOpen,
+      Tool,
+      Editor,
+      awaitingShareTarget,
+    }: State,
   ) {
-    const showSpinner = awaitingShareTarget || (isEditorOpen && !Tool);
+    const isEdit = activeTool === 'edit';
+    const needed = isEdit ? Editor : Tool;
+    const showSpinner = awaitingShareTarget || (isEditorOpen && !needed);
 
     return (
       <div class={style.app}>
         <file-drop onfiledrop={this.onFileDrop} class={style.drop}>
           {showSpinner ? (
-            <loading-spinner class={style.appLoader} />
+            <Skeleton />
           ) : isEditorOpen ? (
-            Tool && (
-              <Tool
-                files={files}
-                mode={activeTool}
-                onModeChange={this.setActiveTool}
-                onBack={this.goHome}
-                showSnack={this.showSnack}
-              />
+            isEdit ? (
+              Editor && (
+                <Editor
+                  files={files}
+                  onModeChange={this.setActiveTool}
+                  onBack={this.goHome}
+                  showSnack={this.showSnack}
+                />
+              )
+            ) : (
+              Tool && (
+                <Tool
+                  files={files}
+                  mode={activeTool}
+                  onModeChange={this.setActiveTool}
+                  onBack={this.goHome}
+                  showSnack={this.showSnack}
+                />
+              )
             )
           ) : (
             <Intro

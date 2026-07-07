@@ -29,7 +29,7 @@ async function getImageClipboardItem(
   }
 }
 
-type Tool = 'compress' | 'watermark' | 'resize';
+type Tool = 'compress' | 'watermark' | 'edit';
 
 interface Props {
   tool?: Tool;
@@ -227,10 +227,11 @@ export default class Intro extends Component<Props, State> {
                 Remove watermarks.{' '}
                 <span class={style.accent}>Clean, private,</span> pixel-perfect.
               </Fragment>
-            ) : tool === 'resize' ? (
+            ) : tool === 'edit' ? (
               <Fragment>
-                Resize images. <span class={style.accent}>Sharp, private,</span>{' '}
-                pixel-perfect.
+                Edit images.{' '}
+                <span class={style.accent}>Crop, resize, rotate,</span> in your
+                browser.
               </Fragment>
             ) : (
               <Fragment>
@@ -242,13 +243,23 @@ export default class Intro extends Component<Props, State> {
           <p class={style.heroSub}>
             {tool === 'watermark'
               ? 'Smoosh cleanly removes Gemini AI watermarks using reverse alpha blending — a mathematically exact inversion, not AI inpainting. Batch supported, fully private.'
-              : tool === 'resize'
-              ? 'Smoosh scales images by exact pixels or percentage with high-quality Lanczos resampling — right in your browser. Aspect ratio locked by default, batch a whole folder at once.'
+              : tool === 'edit'
+              ? 'Crop, resize, rotate and flip your images in one interactive editor — see every change live, then export. Everything runs locally in your browser.'
               : 'Smoosh shrinks and converts images with industry codecs — right in your browser. Your files never leave your device. Compare codecs side by side and batch a whole folder at once.'}
           </p>
 
           {onToolChange && (
             <div class={style.toolToggle} role="tablist" aria-label="Tool">
+              <button
+                class={`${style.toolTab}${
+                  tool === 'edit' ? ' ' + style.toolTabActive : ''
+                }`}
+                role="tab"
+                aria-selected={tool === 'edit'}
+                onClick={() => onToolChange('edit')}
+              >
+                Edit
+              </button>
               <button
                 class={`${style.toolTab}${
                   tool === 'compress' ? ' ' + style.toolTabActive : ''
@@ -258,16 +269,6 @@ export default class Intro extends Component<Props, State> {
                 onClick={() => onToolChange('compress')}
               >
                 Compress
-              </button>
-              <button
-                class={`${style.toolTab}${
-                  tool === 'resize' ? ' ' + style.toolTabActive : ''
-                }`}
-                role="tab"
-                aria-selected={tool === 'resize'}
-                onClick={() => onToolChange('resize')}
-              >
-                Resize
               </button>
               <button
                 class={`${style.toolTab}${
@@ -312,8 +313,6 @@ export default class Intro extends Component<Props, State> {
               <div class={style.dropTitle}>
                 {tool === 'watermark'
                   ? 'Drop Gemini-generated images'
-                  : tool === 'resize'
-                  ? 'Drop images to resize'
                   : 'Drop images here'}
               </div>
               <div class={style.dropHint}>
@@ -435,20 +434,6 @@ export default class Intro extends Component<Props, State> {
                   }
                 >
                   Compress
-                </a>
-                <a
-                  class={style.footerLink}
-                  href="/editor?tool=resize"
-                  onClick={
-                    onOpenTool
-                      ? (e) => {
-                          e.preventDefault();
-                          onOpenTool('resize');
-                        }
-                      : undefined
-                  }
-                >
-                  Resize
                 </a>
                 <a
                   class={style.footerLink}

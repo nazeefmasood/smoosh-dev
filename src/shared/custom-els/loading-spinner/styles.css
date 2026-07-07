@@ -63,7 +63,7 @@
 
 loading-spinner {
   --size: 28px;
-  --color: #4285f4;
+  --color: var(--color-ink-black, #000000);
   --stroke-width: 3px;
   --delay: 300ms;
 

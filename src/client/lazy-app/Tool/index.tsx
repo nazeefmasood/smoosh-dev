@@ -9,7 +9,7 @@ import { encoderMap, EncoderType, EncoderState } from '../feature-meta';
 import { removeWatermarkFromImage } from 'vendor/gwm';
 import type SnackBarElement from 'shared/custom-els/snack-bar';
 
-export type ToolMode = 'compress' | 'watermark' | 'resize';
+export type ToolMode = 'compress' | 'watermark' | 'edit';
 
 interface Props {
   files: File[];
@@ -48,8 +48,6 @@ interface Item {
   results: Result[];
 }
 
-type ResizeMode = 'dimensions' | 'percent';
-
 interface State {
   items: Item[];
   subMode: SubMode;
@@ -59,14 +57,6 @@ interface State {
   processedCount: number;
   modalId?: string;
   comparePct: number;
-  // Resize tool options
-  resizeMode: ResizeMode;
-  resizeWidth: number | '';
-  resizeHeight: number | '';
-  resizeLockAspect: boolean;
-  resizePercent: number;
-  /** Which item is shown on the resize preview stage. */
-  previewId?: string;
 }
 
 /** Files above this size get a heads-up that processing may be slow. */
@@ -116,174 +106,6 @@ function encoderStateFor(type: EncoderType, quality?: number): EncoderState {
   const options = { ...(encoderMap[type].meta as any).defaultOptions };
   if (quality != null && 'quality' in options) options.quality = quality;
   return { type, options } as EncoderState;
-}
-
-/**
- * Pick an encoder that preserves the source file's format so tools like
- * Resize don't silently change JPEGs into PNGs. Unknown types fall back to
- * lossless PNG.
- */
-function encoderForFile(file: File): EncoderType {
-  const type = file.type.toLowerCase();
-  const ext = file.name.slice(file.name.lastIndexOf('.') + 1).toLowerCase();
-  if (type === 'image/jpeg' || ext === 'jpg' || ext === 'jpeg')
-    return 'mozJPEG';
-  if (type === 'image/webp' || ext === 'webp') return 'webP';
-  if (type === 'image/avif' || ext === 'avif') return 'avif';
-  if (type === 'image/png' || ext === 'png') return 'oxiPNG';
-  return 'browserPNG';
-}
-
-/** Human label for a result key (encoder type, or a tool-specific key). */
-function labelForKey(key: string): string {
-  if (key === 'cleaned') return 'Cleaned';
-  if (key === 'resized') return 'Resized';
-  return encoderMap[key as EncoderType].meta.label;
-}
-
-interface ResizeOpts {
-  mode: ResizeMode;
-  width: number | '';
-  height: number | '';
-  lockAspect: boolean;
-  percent: number;
-}
-
-/**
- * Resolve the target size for one image given its natural dimensions and the
- * resize options. Percent scales both axes; dimensions honours the aspect
- * lock (whichever of width/height is provided drives the other).
- */
-function computeResizeTarget(
-  sw: number,
-  sh: number,
-  o: ResizeOpts,
-): { width: number; height: number } {
-  if (o.mode === 'percent') {
-    const p = Math.max(1, o.percent) / 100;
-    return {
-      width: Math.max(1, Math.round(sw * p)),
-      height: Math.max(1, Math.round(sh * p)),
-    };
-  }
-  const w = typeof o.width === 'number' ? o.width : 0;
-  const h = typeof o.height === 'number' ? o.height : 0;
-  if (o.lockAspect) {
-    if (w && !h)
-      return { width: w, height: Math.max(1, Math.round((w * sh) / sw)) };
-    if (h && !w)
-      return { width: Math.max(1, Math.round((h * sw) / sh)), height: h };
-    if (w && h)
-      return { width: w, height: Math.max(1, Math.round((w * sh) / sw)) };
-    return { width: sw, height: sh };
-  }
-  return { width: w || sw, height: h || sh };
-}
-
-interface ResizePreviewProps {
-  file: File;
-  opts: ResizeOpts;
-}
-interface ResizePreviewState {
-  natWidth: number;
-  natHeight: number;
-  loaded: boolean;
-}
-
-/**
- * Live WYSIWYG preview for the Resize tool: loads the image and paints it into
- * a canvas at the current target size, shown at its true pixel size (capped to
- * the stage) so you can see exactly how the scaled image looks before applying.
- */
-class ResizePreview extends Component<ResizePreviewProps, ResizePreviewState> {
-  state: ResizePreviewState = { natWidth: 0, natHeight: 0, loaded: false };
-  private canvas?: HTMLCanvasElement;
-  private img?: HTMLImageElement;
-  private url?: string;
-
-  componentDidMount() {
-    this.load();
-  }
-  componentDidUpdate(prev: ResizePreviewProps) {
-    if (prev.file !== this.props.file) {
-      this.load();
-    } else {
-      this.draw();
-    }
-  }
-  componentWillUnmount() {
-    if (this.url) URL.revokeObjectURL(this.url);
-  }
-
-  private load() {
-    if (this.url) URL.revokeObjectURL(this.url);
-    const img = new Image();
-    this.url = URL.createObjectURL(this.props.file);
-    img.onload = () => {
-      this.img = img;
-      this.setState(
-        {
-          natWidth: img.naturalWidth,
-          natHeight: img.naturalHeight,
-          loaded: true,
-        },
-        () => this.draw(),
-      );
-    };
-    img.src = this.url;
-  }
-
-  private draw() {
-    const c = this.canvas;
-    const img = this.img;
-    if (!c || !img) return;
-    const { width, height } = computeResizeTarget(
-      img.naturalWidth,
-      img.naturalHeight,
-      this.props.opts,
-    );
-    c.width = width;
-    c.height = height;
-    const ctx = c.getContext('2d');
-    if (!ctx) return;
-    ctx.imageSmoothingEnabled = true;
-    (ctx as any).imageSmoothingQuality = 'high';
-    ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(img, 0, 0, width, height);
-  }
-
-  render(
-    { opts }: ResizePreviewProps,
-    { natWidth, natHeight, loaded }: ResizePreviewState,
-  ) {
-    const target = loaded
-      ? computeResizeTarget(natWidth, natHeight, opts)
-      : { width: 0, height: 0 };
-    return (
-      <div class={style.stage}>
-        <div class={style.stageCanvasWrap}>
-          <canvas
-            class={style.previewCanvas}
-            ref={(el: HTMLCanvasElement | null) => {
-              this.canvas = el ?? undefined;
-            }}
-            style={{ maxWidth: '100%', maxHeight: '52vh' }}
-          />
-        </div>
-        {loaded && (
-          <div class={style.stageInfo}>
-            <span class={style.stageDims}>
-              {natWidth} × {natHeight}
-            </span>
-            <span class={style.stageArrow}>→</span>
-            <span class={style.stageDimsNew}>
-              {target.width} × {target.height} px
-            </span>
-          </div>
-        )}
-      </div>
-    );
-  }
 }
 
 /** The done result with the smallest output file for an item, if any. */
@@ -348,9 +170,6 @@ function targetsFor(
   if (mode === 'watermark') {
     return [{ key: 'cleaned', label: 'Cleaned', status: 'pending' }];
   }
-  if (mode === 'resize') {
-    return [{ key: 'resized', label: 'Resized', status: 'pending' }];
-  }
   const formats = subMode === 'all' ? ALL_FORMATS : [encoderType];
   return formats.map((f) => ({
     key: f,
@@ -368,11 +187,6 @@ export default class Tool extends Component<Props, State> {
     processing: false,
     processedCount: 0,
     comparePct: 50,
-    resizeMode: 'dimensions',
-    resizeWidth: '',
-    resizeHeight: '',
-    resizeLockAspect: true,
-    resizePercent: 50,
   };
 
   private workerBridge = new WorkerBridge();
@@ -408,49 +222,6 @@ export default class Tool extends Component<Props, State> {
   };
   private onQualityChange = (e: Event) =>
     this.setState({ quality: +(e.target as HTMLInputElement).value });
-
-  private onResizeModeChange = (rm: ResizeMode) => {
-    if (this.state.processing) return;
-    this.setState({ resizeMode: rm });
-  };
-  private onResizeWidthChange = (e: Event) => {
-    const v = (e.target as HTMLInputElement).value;
-    this.setState({ resizeWidth: v === '' ? '' : Math.max(1, Math.round(+v)) });
-  };
-  private onResizeHeightChange = (e: Event) => {
-    const v = (e.target as HTMLInputElement).value;
-    this.setState({
-      resizeHeight: v === '' ? '' : Math.max(1, Math.round(+v)),
-    });
-  };
-  private onResizeLockToggle = () =>
-    this.setState((p) => ({ resizeLockAspect: !p.resizeLockAspect }));
-  private onResizePercentChange = (e: Event) =>
-    this.setState({
-      resizePercent: Math.max(
-        1,
-        Math.round(+(e.target as HTMLInputElement).value),
-      ),
-    });
-
-  /** Current resize options bundled for the shared target calculation. */
-  private resizeOpts(): ResizeOpts {
-    const s = this.state;
-    return {
-      mode: s.resizeMode,
-      width: s.resizeWidth,
-      height: s.resizeHeight,
-      lockAspect: s.resizeLockAspect,
-      percent: s.resizePercent,
-    };
-  }
-
-  private resizeTargetFor(
-    sw: number,
-    sh: number,
-  ): { width: number; height: number } {
-    return computeResizeTarget(sw, sh, this.resizeOpts());
-  }
 
   private addFiles = (files: File[]) => {
     const imgs = files.filter((f) => f.type.startsWith('image/'));
@@ -502,7 +273,10 @@ export default class Tool extends Component<Props, State> {
                     ...i.results,
                     {
                       key,
-                      label: labelForKey(key),
+                      label:
+                        key === 'cleaned'
+                          ? 'Cleaned'
+                          : encoderMap[key as EncoderType].meta.label,
                       status: 'pending',
                       ...patch,
                     },
@@ -567,52 +341,6 @@ export default class Tool extends Component<Props, State> {
               status: 'error',
               error: 'Failed',
             });
-          }
-          this.setState((p) => ({ processedCount: p.processedCount + 1 }));
-          continue;
-        }
-
-        if (this.props.mode === 'resize') {
-          this.putResult(item.id, 'resized', {
-            status: 'processing',
-            error: undefined,
-          });
-          try {
-            const src = await decodeImage(signal, item.file, this.workerBridge);
-            const { width, height } = this.resizeTargetFor(
-              src.width,
-              src.height,
-            );
-            const resized =
-              width === src.width && height === src.height
-                ? src
-                : await this.workerBridge.resize(signal, src, {
-                    width,
-                    height,
-                    method: 'lanczos3',
-                    fitMethod: 'stretch',
-                    premultiply: true,
-                    linearRGB: true,
-                  });
-            const resultFile = await compressImage(
-              signal,
-              resized,
-              encoderStateFor(encoderForFile(item.file), this.state.quality),
-              seoName(item.file.name),
-              this.workerBridge,
-            );
-            const url = URL.createObjectURL(resultFile);
-            this.putResult(item.id, 'resized', {
-              status: 'done',
-              file: resultFile,
-              url,
-            });
-          } catch (err) {
-            const msg =
-              err instanceof Error && err.name === 'AbortError'
-                ? 'Cancelled'
-                : 'Failed';
-            this.putResult(item.id, 'resized', { status: 'error', error: msg });
           }
           this.setState((p) => ({ processedCount: p.processedCount + 1 }));
           continue;
@@ -702,18 +430,9 @@ export default class Tool extends Component<Props, State> {
       processedCount,
       modalId,
       comparePct,
-      resizeMode,
-      resizeWidth,
-      resizeHeight,
-      resizeLockAspect,
-      resizePercent,
-      previewId,
     }: State,
   ) {
     const isWatermark = mode === 'watermark';
-    const isResize = mode === 'resize';
-    const previewItem =
-      items.find((i) => i.id === previewId) || items[0] || undefined;
     const doneCount = items.reduce(
       (s, i) => s + i.results.filter((r) => r.status === 'done').length,
       0,
@@ -757,6 +476,14 @@ export default class Tool extends Component<Props, State> {
           </a>
           <div class={style.tabs} role="tablist" aria-label="Tool">
             <button
+              class={style.tab}
+              role="tab"
+              aria-selected={false}
+              onClick={() => onModeChange('edit')}
+            >
+              Edit
+            </button>
+            <button
               class={`${style.tab}${
                 mode === 'compress' ? ' ' + style.tabActive : ''
               }`}
@@ -765,16 +492,6 @@ export default class Tool extends Component<Props, State> {
               onClick={() => onModeChange('compress')}
             >
               Compress
-            </button>
-            <button
-              class={`${style.tab}${
-                mode === 'resize' ? ' ' + style.tabActive : ''
-              }`}
-              role="tab"
-              aria-selected={mode === 'resize'}
-              onClick={() => onModeChange('resize')}
-            >
-              Resize
             </button>
             <button
               class={`${style.tab}${
@@ -811,11 +528,6 @@ export default class Tool extends Component<Props, State> {
                 Remove <span class={style.accent}>Gemini watermarks</span>,
                 right in your browser.
               </Fragment>
-            ) : isResize ? (
-              <Fragment>
-                Resize images to <span class={style.accent}>any size</span>, all
-                at once.
-              </Fragment>
             ) : (
               <Fragment>
                 Compress into <span class={style.accent}>any format</span>, all
@@ -826,14 +538,12 @@ export default class Tool extends Component<Props, State> {
           <p class={style.heroSub}>
             {isWatermark
               ? 'Drop your Gemini-generated images and Smoosh cleanly removes the watermark using reverse alpha blending — mathematically exact, fully private, batch supported.'
-              : isResize
-              ? 'Drop images and scale them by exact pixels or a percentage — aspect ratio locked by default. High-quality Lanczos resampling, batch supported, fully local.'
               : 'Drop images and export each to a single format — or to all formats at once. Everything runs locally in your browser.'}
           </p>
 
           {items.length > 0 && (
             <div class={style.controls}>
-              {mode === 'compress' && (
+              {!isWatermark && (
                 <div class={style.modeToggle}>
                   <button
                     class={`${style.modeTab}${
@@ -853,7 +563,7 @@ export default class Tool extends Component<Props, State> {
                   </button>
                 </div>
               )}
-              {mode === 'compress' && subMode === 'single' && (
+              {!isWatermark && subMode === 'single' && (
                 <label class={style.encoderField}>
                   <span>Format</span>
                   <select
@@ -867,112 +577,23 @@ export default class Tool extends Component<Props, State> {
                   </select>
                 </label>
               )}
-              {isResize && (
-                <Fragment>
-                  <div class={style.modeToggle}>
-                    <button
-                      class={`${style.modeTab}${
-                        resizeMode === 'dimensions'
-                          ? ' ' + style.modeTabActive
-                          : ''
-                      }`}
-                      onClick={() => this.onResizeModeChange('dimensions')}
-                    >
-                      Dimensions
-                    </button>
-                    <button
-                      class={`${style.modeTab}${
-                        resizeMode === 'percent'
-                          ? ' ' + style.modeTabActive
-                          : ''
-                      }`}
-                      onClick={() => this.onResizeModeChange('percent')}
-                    >
-                      Percentage
-                    </button>
-                  </div>
-                  {resizeMode === 'dimensions' ? (
-                    <Fragment>
-                      <label class={style.dimField}>
-                        <span>Width</span>
-                        <input
-                          type="number"
-                          min="1"
-                          inputMode="numeric"
-                          placeholder="auto"
-                          value={resizeWidth}
-                          onInput={this.onResizeWidthChange}
-                          disabled={processing}
-                          aria-label="Target width in pixels"
-                        />
-                        <span class={style.dimUnit}>px</span>
-                      </label>
-                      <label class={style.dimField}>
-                        <span>Height</span>
-                        <input
-                          type="number"
-                          min="1"
-                          inputMode="numeric"
-                          placeholder="auto"
-                          value={resizeHeight}
-                          onInput={this.onResizeHeightChange}
-                          disabled={processing || resizeLockAspect}
-                          aria-label="Target height in pixels"
-                        />
-                        <span class={style.dimUnit}>px</span>
-                      </label>
-                      <button
-                        class={`${style.lockBtn}${
-                          resizeLockAspect ? ' ' + style.lockBtnActive : ''
-                        }`}
-                        onClick={this.onResizeLockToggle}
-                        disabled={processing}
-                        aria-pressed={resizeLockAspect}
-                        title={
-                          resizeLockAspect
-                            ? 'Aspect ratio locked'
-                            : 'Aspect ratio unlocked'
-                        }
-                      >
-                        {resizeLockAspect ? '🔒' : '🔓'} Aspect
-                      </button>
-                    </Fragment>
-                  ) : (
-                    <label class={style.qualityField}>
-                      <span>Scale</span>
-                      <input
-                        class={style.qualityRange}
-                        type="range"
-                        min="1"
-                        max="100"
-                        value={resizePercent}
-                        onInput={this.onResizePercentChange}
-                        disabled={processing}
-                        aria-label="Resize percentage"
-                      />
-                      <span class={style.qualityVal}>{resizePercent}%</span>
-                    </label>
-                  )}
-                </Fragment>
-              )}
-              {(mode === 'compress' &&
-                (subMode === 'all' || encoderHasQuality(encoderType))) ||
-              isResize ? (
-                <label class={style.qualityField}>
-                  <span>Quality</span>
-                  <input
-                    class={style.qualityRange}
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={quality}
-                    onInput={this.onQualityChange}
-                    disabled={processing}
-                    aria-label="Quality"
-                  />
-                  <span class={style.qualityVal}>{quality}</span>
-                </label>
-              ) : null}
+              {!isWatermark &&
+                (subMode === 'all' || encoderHasQuality(encoderType)) && (
+                  <label class={style.qualityField}>
+                    <span>Quality</span>
+                    <input
+                      class={style.qualityRange}
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={quality}
+                      onInput={this.onQualityChange}
+                      disabled={processing}
+                      aria-label="Quality"
+                    />
+                    <span class={style.qualityVal}>{quality}</span>
+                  </label>
+                )}
               <div class={style.spacer} />
               <button class={style.btnAdd} onClick={this.onAddFilesClick}>
                 + Add images
@@ -997,8 +618,6 @@ export default class Tool extends Component<Props, State> {
                 <button class={style.btnPrimary} onClick={this.processAll}>
                   {isWatermark
                     ? `Remove watermarks (${items.length})`
-                    : isResize
-                    ? `Resize all (${items.length})`
                     : subMode === 'all'
                     ? `Convert to all formats (${items.length})`
                     : `Process all (${items.length})`}
@@ -1007,35 +626,6 @@ export default class Tool extends Component<Props, State> {
             </div>
           )}
         </section>
-
-        {isResize && previewItem && (
-          <section class={style.editorSection}>
-            <ResizePreview file={previewItem.file} opts={this.resizeOpts()} />
-            {items.length > 1 && (
-              <div
-                class={style.filmstrip}
-                role="tablist"
-                aria-label="Preview image"
-              >
-                {items.map((it) => (
-                  <button
-                    class={`${style.filmThumb}${
-                      it.id === previewItem.id
-                        ? ' ' + style.filmThumbActive
-                        : ''
-                    }`}
-                    role="tab"
-                    aria-selected={it.id === previewItem.id}
-                    title={it.file.name}
-                    onClick={() => this.setState({ previewId: it.id })}
-                  >
-                    <img src={it.previewUrl} alt={it.file.name} />
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
 
         <section class={style.toolArea}>
           {items.length === 0 ? (
@@ -1066,8 +656,6 @@ export default class Tool extends Component<Props, State> {
               <div class={style.dropTitle}>
                 {isWatermark
                   ? 'Drop Gemini-generated images'
-                  : isResize
-                  ? 'Drop images to resize'
                   : 'Drop images to compress'}
               </div>
               <div class={style.dropHint}>
