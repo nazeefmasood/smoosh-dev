@@ -9,7 +9,6 @@ import type { ToolMode } from '../Tool';
 export const TOOLS: { mode: ToolMode; label: string }[] = [
   { mode: 'edit', label: 'Edit' },
   { mode: 'compress', label: 'Compress' },
-  { mode: 'bgremove', label: 'Background remover' },
   { mode: 'watermark', label: 'Watermark remover' },
   { mode: 'metadata', label: 'EXIF strip' },
   { mode: 'favicon', label: 'Favicon' },

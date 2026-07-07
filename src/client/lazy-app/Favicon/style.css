@@ -107,6 +107,47 @@
   height: 18px;
 }
 
+/* ---- Toolbar: mode toggle centered above the canvas ---- */
+.toolbar {
+  width: 100%;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: var(--spacing-8) var(--gutter) var(--spacing-20);
+  display: flex;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.modeToggle {
+  display: inline-flex;
+  gap: var(--spacing-6);
+  padding: 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+}
+
+.modeTab {
+  font-family: var(--font-switzer);
+  font-size: var(--text-body-sm);
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: 8px 18px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.modeTab:hover {
+  color: var(--text);
+}
+
+.modeTabActive,
+.modeTabActive:hover {
+  background: var(--action-gradient);
+  color: var(--color-ink-black);
+}
+
 /* ---- Body: preview + panel ---- */
 .body {
   flex: 1 1 auto;
@@ -256,13 +297,30 @@
 }
 
 .colorInput {
-  width: 44px;
-  height: 36px;
+  width: 48px;
+  height: 32px;
   padding: 0;
   border: 1px solid var(--line-strong);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-card);
   background: transparent;
   cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  overflow: hidden;
+}
+
+/* Make the native color swatch fill the whole rounded-rect (browsers render
+ * it as an inset oval by default, which read as a circle). */
+.colorInput::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.colorInput::-webkit-color-swatch {
+  border: none;
+  border-radius: calc(var(--radius-card) - 2px);
+}
+.colorInput::-moz-color-swatch {
+  border: none;
+  border-radius: calc(var(--radius-card) - 2px);
 }
 
 .checkRow {

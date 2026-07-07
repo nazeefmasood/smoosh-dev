@@ -3,6 +3,7 @@ import { h, Component, Fragment } from 'preact';
 import * as style from './style.css';
 import 'add-css:./style.css';
 import ToolNav from '../ToolNav';
+import Footer from '../Footer';
 import type { ToolMode } from '../Tool';
 import { zipFiles } from 'vendor/zip';
 import { buildIco } from 'vendor/ico';
@@ -41,8 +42,13 @@ interface State {
   checkError?: string;
 }
 
+// Canvas fillText cannot resolve CSS variables, so these are concrete font
+// stacks (no var(--…)).
 const FONTS = [
-  { label: 'Sans', value: 'var(--font-switzer), system-ui, sans-serif' },
+  {
+    label: 'Sans',
+    value: 'system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+  },
   { label: 'Serif', value: 'Georgia, "Times New Roman", serif' },
   { label: 'Mono', value: 'ui-monospace, Menlo, monospace' },
   {
@@ -51,7 +57,9 @@ const FONTS = [
   },
 ];
 
-const MASTER = 512;
+// Render the master at 1024 so every downscaled size stays crisp; the
+// largest emitted file is still 512 (android-chrome-512), matching favicon.io.
+const MASTER = 1024;
 const SIZES = [16, 32, 48, 180, 192, 512];
 
 const HTML_SNIPPET = `<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
@@ -300,6 +308,15 @@ export default class Favicon extends Component<Props, State> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
+      // The /api function only exists on the deployed (Vercel) site. On a
+      // static dev server the request falls through to index.html, so guard
+      // against a non-JSON response instead of crashing on JSON.parse.
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        throw new Error(
+          'The favicon checker runs on the deployed site — it’s not available on this local static server.',
+        );
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Check failed');
       this.setState({ checkResult: data });
@@ -344,6 +361,33 @@ export default class Favicon extends Component<Props, State> {
           onChange={this.onPickImage}
         />
         <ToolNav active="favicon" onModeChange={onModeChange} onBack={onBack} />
+
+        <div class={style.toolbar}>
+          <div
+            class={style.modeToggle}
+            role="tablist"
+            aria-label="Favicon mode"
+          >
+            {(['text', 'emoji', 'image', 'check'] as InputMode[]).map((m) => (
+              <button
+                class={`${style.modeTab}${
+                  s.inputMode === m ? ' ' + style.modeTabActive : ''
+                }`}
+                role="tab"
+                aria-selected={s.inputMode === m}
+                onClick={() => this.setState({ inputMode: m })}
+              >
+                {m === 'text'
+                  ? 'Text'
+                  : m === 'emoji'
+                  ? 'Emoji'
+                  : m === 'image'
+                  ? 'Image'
+                  : 'Check site'}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <section class={style.body}>
           {s.inputMode === 'check' ? (
@@ -482,27 +526,13 @@ export default class Favicon extends Component<Props, State> {
 
               <aside class={style.panel}>
                 <div class={style.panelBody}>
-                  <h3 class={style.panelTitle}>Favicon generator</h3>
-                  <div class={style.segToggle}>
-                    {(['text', 'emoji', 'image', 'check'] as InputMode[]).map(
-                      (m) => (
-                        <button
-                          class={`${style.segBtn}${
-                            s.inputMode === m ? ' ' + style.segBtnActive : ''
-                          }`}
-                          onClick={() => this.setState({ inputMode: m })}
-                        >
-                          {m === 'text'
-                            ? 'Text'
-                            : m === 'emoji'
-                            ? 'Emoji'
-                            : m === 'image'
-                            ? 'Image'
-                            : 'Check site'}
-                        </button>
-                      ),
-                    )}
-                  </div>
+                  <h3 class={style.panelTitle}>
+                    {s.inputMode === 'text'
+                      ? 'Text favicon'
+                      : s.inputMode === 'emoji'
+                      ? 'Emoji favicon'
+                      : 'Image favicon'}
+                  </h3>
 
                   {s.inputMode === 'text' && (
                     <label class={style.field}>
@@ -654,6 +684,8 @@ export default class Favicon extends Component<Props, State> {
             </Fragment>
           )}
         </section>
+
+        <Footer onOpenTool={onModeChange} />
       </div>
     );
   }

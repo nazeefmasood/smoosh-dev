@@ -23,16 +23,15 @@ export default function Skeleton() {
         <div class={style.headingLine} style={{ width: '52%' }} />
         <div class={style.headingLine} style={{ width: '68%' }} />
         <div class={style.headingLine} style={{ width: '30%' }} />
-        <div
-          class={style.subLine}
-          style={{ width: '80%', marginTop: '28px' }}
-        />
-        <div class={style.subLine} style={{ width: '64%' }} />
-        <div class={style.subLine} style={{ width: '46%' }} />
+        <div class={style.subBlock}>
+          <div class={style.subLine} style={{ width: '80%' }} />
+          <div class={style.subLine} style={{ width: '64%' }} />
+          <div class={style.subLine} style={{ width: '46%' }} />
+        </div>
         <div class={style.toggleRow}>
-          <span class={`${style.shimmer} ${style.togglePill}`} />
-          <span class={`${style.shimmer} ${style.togglePill}`} />
-          <span class={`${style.shimmer} ${style.togglePill}`} />
+          {Array.from({ length: 6 }).map(() => (
+            <span class={`${style.shimmer} ${style.togglePill}`} />
+          ))}
         </div>
       </section>
 

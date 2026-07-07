@@ -3,6 +3,7 @@ import { h, Component, Fragment } from 'preact';
 import * as style from './style.css';
 import 'add-css:./style.css';
 import ToolNav from '../ToolNav';
+import Footer from '../Footer';
 import WorkerBridge from '../worker-bridge';
 import { compressImage } from '../pipeline';
 import { encoderMap, EncoderType, EncoderState } from '../feature-meta';
@@ -938,6 +939,8 @@ export default class Editor extends Component<Props, State> {
             </div>
           </aside>
         </div>
+
+        <Footer onOpenTool={onModeChange} />
       </div>
     );
   }

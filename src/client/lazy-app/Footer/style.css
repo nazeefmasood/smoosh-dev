@@ -1,0 +1,89 @@
+/**
+ * Shared footer — centered to the design-system width, matching the landing
+ * page footer exactly.
+ */
+
+.footer {
+  margin-top: auto;
+  padding-top: var(--spacing-48);
+  padding-bottom: var(--spacing-24);
+}
+
+.footerInner,
+.footerBar {
+  width: 100%;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+  box-sizing: border-box;
+}
+
+.footerInner {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-48);
+  flex-wrap: wrap;
+}
+
+.footerBrand {
+  max-width: 42ch;
+}
+
+.footerFullLogo {
+  display: block;
+  height: 88px;
+  width: auto;
+}
+
+.footerTag {
+  margin: var(--spacing-16) 0 0;
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--text-muted);
+}
+
+.footerCols {
+  display: flex;
+  gap: var(--spacing-64);
+}
+
+.footerCol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-12);
+}
+
+.footerCol h4 {
+  margin: 0 0 var(--spacing-4);
+  font-size: var(--text-micro);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-black);
+}
+
+.footerLink {
+  font-size: var(--text-body-sm);
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.footerLink:hover {
+  color: var(--text);
+}
+
+.footerBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--spacing-40);
+  padding-top: var(--spacing-20);
+  border-top: 1px solid var(--line);
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+}
+
+.footerMade {
+  color: var(--text-faint);
+}
