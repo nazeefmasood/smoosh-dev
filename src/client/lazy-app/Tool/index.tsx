@@ -68,6 +68,8 @@ interface State {
   processedCount: number;
   modalId?: string;
   comparePct: number;
+  /** Background-remover model download progress (first load only). */
+  modelDl?: { loaded: number; total: number };
 }
 
 /** Files above this size get a heads-up that processing may be slow. */
@@ -457,8 +459,11 @@ export default class Tool extends Component<Props, State> {
               error: undefined,
             });
             try {
-              await preloadModel();
+              await preloadModel((loaded, total) =>
+                this.setState({ modelDl: { loaded, total } }),
+              );
               this.modelWarmed = true;
+              this.setState({ modelDl: undefined });
             } catch {
               this.putResult(item.id, 'cutout', {
                 status: 'error',
@@ -589,6 +594,7 @@ export default class Tool extends Component<Props, State> {
       processedCount,
       modalId,
       comparePct,
+      modelDl,
     }: State,
   ) {
     const isWatermark = mode === 'watermark';
@@ -800,11 +806,40 @@ export default class Tool extends Component<Props, State> {
               )}
               {processing ? (
                 <Fragment>
-                  <span class={style.progress}>
-                    <span class={style.spinner} aria-hidden="true" />
-                    Processing {Math.min(processedCount + 1, items.length)}/
-                    {items.length}…
-                  </span>
+                  {modelDl ? (
+                    <span class={style.modelDl}>
+                      <span class={style.modelDlLabel}>
+                        Downloading model{' '}
+                        {modelDl.total
+                          ? `${Math.min(
+                              100,
+                              Math.round(
+                                (modelDl.loaded / modelDl.total) * 100,
+                              ),
+                            )}%`
+                          : `${prettyBytes(modelDl.loaded)}`}
+                      </span>
+                      <span class={style.modelDlBar}>
+                        <span
+                          class={style.modelDlFill}
+                          style={{
+                            width: modelDl.total
+                              ? `${Math.min(
+                                  100,
+                                  (modelDl.loaded / modelDl.total) * 100,
+                                )}%`
+                              : '0%',
+                          }}
+                        />
+                      </span>
+                    </span>
+                  ) : (
+                    <span class={style.progress}>
+                      <span class={style.spinner} aria-hidden="true" />
+                      Processing {Math.min(processedCount + 1, items.length)}/
+                      {items.length}…
+                    </span>
+                  )}
                   <button class={style.btnGhost} onClick={this.cancel}>
                     Cancel
                   </button>

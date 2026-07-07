@@ -27,9 +27,50 @@ const STD = [0.229, 0.224, 0.225];
 let sessionPromise: Promise<ort.InferenceSession> | null = null;
 let usingGpu = false;
 
+export type ProgressFn = (loaded: number, total: number) => void;
+
+/**
+ * Fetch a URL with a streaming reader so we can report download progress,
+ * then return the assembled bytes. ORT's create(url) fetches internally with
+ * no progress hook, so we fetch ourselves and hand it the buffer.
+ */
+async function fetchWithProgress(
+  url: string,
+  onProgress?: ProgressFn,
+): Promise<Uint8Array> {
+  const res = await fetch(url);
+  if (!res.ok || !res.body) throw new Error(`Download failed (${res.status})`);
+  const total = Number(res.headers.get('Content-Length') || 0);
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      chunks.push(value);
+      received += value.length;
+      onProgress?.(received, total);
+    }
+  }
+  if (chunks.length === 1) return chunks[0];
+  const out = new Uint8Array(received);
+  let off = 0;
+  for (const c of chunks) {
+    out.set(c, off);
+    off += c.length;
+  }
+  return out;
+}
+
 /** Lazy-load + cache the model. Returns once; reused for subsequent images. */
-export function preloadModel(): Promise<ort.InferenceSession> {
-  if (sessionPromise) return sessionPromise;
+export function preloadModel(
+  onProgress?: ProgressFn,
+): Promise<ort.InferenceSession> {
+  if (sessionPromise) {
+    // Already loaded/loading — report complete if resolved, else nothing.
+    return sessionPromise;
+  }
 
   // Point ORT at the self-hosted wasm files (map by filename).
   (ort.env as any).wasm.wasmPaths = {
@@ -41,22 +82,23 @@ export function preloadModel(): Promise<ort.InferenceSession> {
     : 1;
 
   sessionPromise = (async () => {
-    // Prefer WebGPU when available; fall back to WASM threads.
+    // Download the model with progress, then build the session from the buffer.
+    const modelBytes = await fetchWithProgress(modelUrl, onProgress);
     const providers: string[] = [];
     if (typeof navigator !== 'undefined' && (navigator as any).gpu) {
       providers.push('webgpu');
     }
     providers.push('wasm');
     try {
-      const s = await ort.InferenceSession.create(modelUrl, {
+      const s = await ort.InferenceSession.create(modelBytes, {
         executionProviders: providers,
         graphOptimizationLevel: 'all',
       });
       usingGpu = providers[0] === 'webgpu';
       return s;
-    } catch (e) {
-      // Retry with WASM only if WebGPU path failed.
-      const s = await ort.InferenceSession.create(modelUrl, {
+    } catch {
+      // Retry with WASM only if WebGPU failed.
+      const s = await ort.InferenceSession.create(modelBytes, {
         executionProviders: ['wasm'],
         graphOptimizationLevel: 'all',
       });
