@@ -1,233 +1,93 @@
 /**
- * Background remover — ONNX Runtime Web + RMBG-1.4.
+ * Background remover — main-thread wrapper.
  *
- * Runs entirely in the browser. The model (~44 MB int8) and the ORT wasm
- * runtime are self-hosted as same-origin assets (COEP blocks CDN fetches).
- * Inference prefers WebGPU (fast) and falls back to multi-threaded WASM,
- * which works because the app is cross-origin isolated (SharedArrayBuffer
- * available via COOP/COEP).
- *
- * RMBG-1.4 preprocessing: resize to 1024×1024, RGB, ImageNet-normalize,
- * NCHW float32. Output is a [1,1,1024,1024] mask → sigmoid, resized back to
- * the original resolution and applied as the alpha channel.
+ * All ONNX work (model download, session creation, inference) runs in a
+ * dedicated Web Worker (./worker) so the heavy RMBG-1.4 forward pass never
+ * freezes the page. This module spawns that worker and exposes the same
+ * promise-based API the Tool uses.
  */
-import * as ort from 'onnxruntime-web';
-
-// Self-hosted assets (emitted same-origin by the url: rollup plugin). The wasm
-// files are vendored locally because onnxruntime-web's package "exports" map
-// blocks deep /dist imports under bundlers. All four wasm variants are mapped
-// so ORT never stalls fetching one we didn't provide.
-import modelUrl from 'url:client/lazy-app/BgRemove/models/rmbg-1.4.onnx';
-import wasmCoreUrl from 'url:vendor/bgremove/wasm/ort-wasm-simd-threaded.wasm';
-import wasmJsepUrl from 'url:vendor/bgremove/wasm/ort-wasm-simd-threaded.jsep.wasm';
-import wasmAsyncifyUrl from 'url:vendor/bgremove/wasm/ort-wasm-simd-threaded.asyncify.wasm';
-import wasmJspiUrl from 'url:vendor/bgremove/wasm/ort-wasm-simd-threaded.jspi.wasm';
-
-const MODEL_SIZE = 1024;
-const MEAN = [0.485, 0.456, 0.406];
-const STD = [0.229, 0.224, 0.225];
-
-let sessionPromise: Promise<ort.InferenceSession> | null = null;
-let usingGpu = false;
+import workerURL from 'omt:vendor/bgremove/worker';
 
 export type ProgressFn = (loaded: number, total: number) => void;
 
-/**
- * Fetch a URL with a streaming reader so we can report download progress,
- * then return the assembled bytes. ORT's create(url) fetches internally with
- * no progress hook, so we fetch ourselves and hand it the buffer.
- */
-async function fetchWithProgress(
-  url: string,
-  onProgress?: ProgressFn,
-): Promise<Uint8Array> {
-  const res = await fetch(url);
-  if (!res.ok || !res.body) throw new Error(`Download failed (${res.status})`);
-  const total = Number(res.headers.get('Content-Length') || 0);
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let received = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (value) {
-      chunks.push(value);
-      received += value.length;
-      onProgress?.(received, total);
-    }
-  }
-  if (chunks.length === 1) return chunks[0];
-  const out = new Uint8Array(received);
-  let off = 0;
-  for (const c of chunks) {
-    out.set(c, off);
-    off += c.length;
-  }
-  return out;
-}
-
-/** Lazy-load + cache the model. Returns once; reused for subsequent images. */
-export function preloadModel(
-  onProgress?: ProgressFn,
-): Promise<ort.InferenceSession> {
-  if (sessionPromise) {
-    // Already loaded/loading — report complete if resolved, else nothing.
-    return sessionPromise;
-  }
-
-  // Point ORT at the self-hosted wasm files (map every variant by filename).
-  (ort.env as any).wasm.wasmPaths = {
-    'ort-wasm-simd-threaded.wasm': wasmCoreUrl,
-    'ort-wasm-simd-threaded.jsep.wasm': wasmJsepUrl,
-    'ort-wasm-simd-threaded.asyncify.wasm': wasmAsyncifyUrl,
-    'ort-wasm-simd-threaded.jspi.wasm': wasmJspiUrl,
-  };
-  // Single-threaded WASM. ORT-Web's threaded build can deadlock inside
-  // InferenceSession.create during pthread-pool init in bundled/COEP setups,
-  // which presents as a permanent "Preparing model…" hang. Single-threaded
-  // reliably initializes; a 44 MB int8 model still runs in a few seconds.
-  ort.env.wasm.numThreads = 1;
-  ort.env.wasm.proxy = false;
-
-  sessionPromise = (async () => {
-    // Download the model with progress, then build the session from the buffer.
-    const modelBytes = await fetchWithProgress(modelUrl, onProgress);
-    const opts = {
-      executionProviders: ['wasm'],
-      // 'basic' avoids occasional hangs in the ORT graph optimizer on
-      // quantized U-Nets; cost is negligible for inference.
-      graphOptimizationLevel: 'basic' as const,
-    };
-    try {
-      return await ort.InferenceSession.create(modelBytes, opts);
-    } catch {
-      // Last-resort retry with optimizations fully disabled.
-      return await ort.InferenceSession.create(modelBytes, {
-        ...opts,
-        graphOptimizationLevel: 'disabled' as const,
-      });
-    }
-  })();
-  return sessionPromise;
-}
-
-export function isUsingGpu(): boolean {
-  return usingGpu;
-}
-
-/** Resize a source ImageData to w×h using a canvas (high quality). */
-function resizeImageData(src: ImageData, w: number, h: number): ImageData {
-  const c = document.createElement('canvas');
-  c.width = src.width;
-  c.height = src.height;
-  c.getContext('2d')!.putImageData(src, 0, 0);
-  const out = document.createElement('canvas');
-  out.width = w;
-  out.height = h;
-  const octx = out.getContext('2d')!;
-  octx.imageSmoothingEnabled = true;
-  (octx as any).imageSmoothingQuality = 'high';
-  octx.drawImage(c, 0, 0, w, h);
-  return octx.getImageData(0, 0, w, h);
-}
-
-/** Build the [1,3,1024,1024] NCHW normalized input tensor. */
-function preprocess(img: ImageData): Float32Array {
-  const { data, width, height } = img;
-  const out = new Float32Array(3 * MODEL_SIZE * MODEL_SIZE);
-  const plane = MODEL_SIZE * MODEL_SIZE;
-  for (let y = 0; y < MODEL_SIZE; y++) {
-    for (let x = 0; x < MODEL_SIZE; x++) {
-      const srcIdx = (y * width + x) * 4;
-      const dstIdx = y * MODEL_SIZE + x;
-      out[dstIdx] = (data[srcIdx] / 255 - MEAN[0]) / STD[0]; // R
-      out[plane + dstIdx] = (data[srcIdx + 1] / 255 - MEAN[1]) / STD[1]; // G
-      out[2 * plane + dstIdx] = (data[srcIdx + 2] / 255 - MEAN[2]) / STD[2]; // B
-    }
-  }
-  return out;
-}
-
-/** Sigmoid + resize the model's [1,1,H,W] mask back to targetW×targetH. */
-function maskToAlpha(
-  raw: Float32Array,
-  maskW: number,
-  maskH: number,
-  targetW: number,
-  targetH: number,
-): Uint8ClampedArray {
-  // Sigmoid into a grayscale ImageData, then canvas-resize to target.
-  const small = new ImageData(maskW, maskH);
-  for (let i = 0; i < maskW * maskH; i++) {
-    const v = 1 / (1 + Math.exp(-raw[i])); // sigmoid
-    const a = Math.round(v * 255);
-    small.data[i * 4] = a;
-    small.data[i * 4 + 1] = a;
-    small.data[i * 4 + 2] = a;
-    small.data[i * 4 + 3] = 255;
-  }
-  const c = document.createElement('canvas');
-  c.width = maskW;
-  c.height = maskH;
-  c.getContext('2d')!.putImageData(small, 0, 0);
-  const out = document.createElement('canvas');
-  out.width = targetW;
-  out.height = targetH;
-  const octx = out.getContext('2d')!;
-  octx.imageSmoothingEnabled = true;
-  (octx as any).imageSmoothingQuality = 'high';
-  octx.drawImage(c, 0, 0, targetW, targetH);
-  const resized = octx.getImageData(0, 0, targetW, targetH).data;
-  const alpha = new Uint8ClampedArray(targetW * targetH);
-  for (let i = 0; i < alpha.length; i++) alpha[i] = resized[i * 4];
-  return alpha;
-}
-
 export interface RemoveBgResult {
-  /** RGBA ImageData with the background made transparent. */
   imageData: ImageData;
   width: number;
   height: number;
 }
 
+let worker: Worker | null = null;
+let readyPromise: Promise<void> | null = null;
+let readyResolve: (() => void) | null = null;
+let readyReject: ((e: Error) => void) | null = null;
+let progressFn: ProgressFn | null = null;
+let seq = 0;
+const pending = new Map<
+  number,
+  { resolve: (v: any) => void; reject: (e: any) => void }
+>();
+
+function ensureWorker() {
+  if (worker) return;
+  worker = new Worker(workerURL);
+  worker.onmessage = (e: MessageEvent) => {
+    const m = e.data;
+    switch (m.type) {
+      case 'progress':
+        if (progressFn) progressFn(m.loaded, m.total);
+        break;
+      case 'ready':
+        readyResolve?.();
+        break;
+      case 'init-error':
+        readyReject?.(new Error(m.error || 'Model failed to load'));
+        break;
+      case 'result': {
+        const p = pending.get(m.id);
+        if (p) {
+          pending.delete(m.id);
+          const imageData = new ImageData(m.rgba, m.width, m.height);
+          p.resolve({ imageData, width: m.width, height: m.height });
+        }
+        break;
+      }
+      case 'process-error': {
+        const p = pending.get(m.id);
+        if (p) {
+          pending.delete(m.id);
+          p.reject(new Error(m.error || 'Inference failed'));
+        }
+        break;
+      }
+    }
+  };
+}
+
 /**
- * Remove the background from an image. Loads the model on first call (a few
- * seconds), then runs segmentation and composites the mask as alpha at the
- * original resolution.
+ * Load the model in the worker. Resolves when the worker reports ready.
+ * `onProgress` fires during the one-time model download.
  */
+export function preloadModel(onProgress?: ProgressFn): Promise<void> {
+  progressFn = onProgress || null;
+  if (readyPromise) return readyPromise;
+  ensureWorker();
+  readyPromise = new Promise<void>((resolve, reject) => {
+    readyResolve = resolve;
+    readyReject = reject;
+    worker!.postMessage({ type: 'init' });
+  });
+  return readyPromise;
+}
+
+/** Remove the background from an image. Requires the model to be loaded. */
 export async function removeBackground(
   src: ImageData,
 ): Promise<RemoveBgResult> {
-  const origW = src.width;
-  const origH = src.height;
-
-  const session = await preloadModel();
-  const resized = resizeImageData(src, MODEL_SIZE, MODEL_SIZE);
-  const tensor = new ort.Tensor('float32', preprocess(resized), [
-    1,
-    3,
-    MODEL_SIZE,
-    MODEL_SIZE,
-  ]);
-
-  const inputName = session.inputNames[0];
-  const results = await session.run({ [inputName]: tensor });
-  const output = results[session.outputNames[0]];
-  const raw = output.data as Float32Array;
-  // Output dims: [1, 1, maskH, maskW]
-  const dims = output.dims;
-  const maskH = dims[dims.length - 2] || MODEL_SIZE;
-  const maskW = dims[dims.length - 1] || MODEL_SIZE;
-
-  const alpha = maskToAlpha(raw, maskW, maskH, origW, origH);
-
-  // Composite alpha onto the original RGBA pixels.
-  const out = new ImageData(origW, origH);
-  for (let i = 0; i < origW * origH; i++) {
-    out.data[i * 4] = src.data[i * 4];
-    out.data[i * 4 + 1] = src.data[i * 4 + 1];
-    out.data[i * 4 + 2] = src.data[i * 4 + 2];
-    out.data[i * 4 + 3] = alpha[i];
-  }
-  return { imageData: out, width: origW, height: origH };
+  if (!readyPromise) throw new Error('Model not preloaded');
+  await readyPromise;
+  const id = ++seq;
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    worker!.postMessage({ type: 'process', id, imageData: src });
+  });
 }
