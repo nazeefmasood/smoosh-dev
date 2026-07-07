@@ -10,7 +10,12 @@ import { removeWatermarkFromImage } from 'vendor/gwm';
 import { readMeta, stripMeta, MetaResult } from 'vendor/exif';
 import type SnackBarElement from 'shared/custom-els/snack-bar';
 
-export type ToolMode = 'compress' | 'watermark' | 'edit' | 'metadata';
+export type ToolMode =
+  | 'compress'
+  | 'watermark'
+  | 'edit'
+  | 'metadata'
+  | 'favicon';
 
 interface Props {
   files: File[];

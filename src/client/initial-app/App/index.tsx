@@ -29,6 +29,7 @@ interface State {
   isEditorOpen: Boolean;
   Tool?: typeof import('client/lazy-app/Tool').default;
   Editor?: typeof import('client/lazy-app/Editor').default;
+  Favicon?: typeof import('client/lazy-app/Favicon').default;
 }
 
 function modeFromQuery(): ToolMode {
@@ -37,6 +38,7 @@ function modeFromQuery(): ToolMode {
     if (t === 'watermark') return 'watermark';
     if (t === 'edit') return 'edit';
     if (t === 'metadata') return 'metadata';
+    if (t === 'favicon') return 'favicon';
     return 'compress';
   } catch {
     return 'compress';
@@ -82,6 +84,14 @@ export default class App extends Component<Props, State> {
       })
       .catch(() => {
         this.showSnack('Failed to load editor');
+      });
+
+    import('client/lazy-app/Favicon')
+      .then((module) => {
+        this.setState({ Favicon: module.default });
+      })
+      .catch(() => {
+        this.showSnack('Failed to load favicon tool');
       });
 
     swBridgePromise.then(async ({ offliner, getSharedImage }) => {
@@ -152,11 +162,13 @@ export default class App extends Component<Props, State> {
       isEditorOpen,
       Tool,
       Editor,
+      Favicon,
       awaitingShareTarget,
     }: State,
   ) {
     const isEdit = activeTool === 'edit';
-    const needed = isEdit ? Editor : Tool;
+    const isFavicon = activeTool === 'favicon';
+    const needed = isEdit ? Editor : isFavicon ? Favicon : Tool;
     const showSpinner = awaitingShareTarget || (isEditorOpen && !needed);
 
     return (
@@ -169,6 +181,14 @@ export default class App extends Component<Props, State> {
               Editor && (
                 <Editor
                   files={files}
+                  onModeChange={this.setActiveTool}
+                  onBack={this.goHome}
+                  showSnack={this.showSnack}
+                />
+              )
+            ) : isFavicon ? (
+              Favicon && (
+                <Favicon
                   onModeChange={this.setActiveTool}
                   onBack={this.goHome}
                   showSnack={this.showSnack}

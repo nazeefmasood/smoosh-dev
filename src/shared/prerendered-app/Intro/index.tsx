@@ -29,7 +29,7 @@ async function getImageClipboardItem(
   }
 }
 
-type Tool = 'compress' | 'watermark' | 'edit' | 'metadata';
+type Tool = 'compress' | 'watermark' | 'edit' | 'metadata' | 'favicon';
 
 interface Props {
   tool?: Tool;
@@ -239,6 +239,12 @@ export default class Intro extends Component<Props, State> {
                 <span class={style.accent}>Private, lossless,</span>{' '}
                 pixel-perfect.
               </Fragment>
+            ) : tool === 'favicon' ? (
+              <Fragment>
+                Generate favicons.{' '}
+                <span class={style.accent}>Text, emoji, image</span> — one
+                click.
+              </Fragment>
             ) : (
               <Fragment>
                 Compress images.{' '}
@@ -253,6 +259,8 @@ export default class Intro extends Component<Props, State> {
               ? 'Crop, resize, rotate and flip your images in one interactive editor — see every change live, then export. Everything runs locally in your browser.'
               : tool === 'metadata'
               ? 'Smoosh removes EXIF, GPS, camera and timestamp data from your images — losslessly for JPEG and PNG, so quality is untouched. See exactly what gets removed. Fully private, batch supported.'
+              : tool === 'favicon'
+              ? 'Turn text, an emoji or an image into a complete favicon set — .ico, PNGs, apple-touch-icon, Android icons and webmanifest — zipped and ready, with the HTML snippet to paste. Runs locally.'
               : 'Smoosh shrinks and converts images with industry codecs — right in your browser. Your files never leave your device. Compare codecs side by side and batch a whole folder at once.'}
           </p>
 
@@ -297,6 +305,16 @@ export default class Intro extends Component<Props, State> {
                 onClick={() => onToolChange('metadata')}
               >
                 EXIF strip
+              </button>
+              <button
+                class={`${style.toolTab}${
+                  tool === 'favicon' ? ' ' + style.toolTabActive : ''
+                }`}
+                role="tab"
+                aria-selected={tool === 'favicon'}
+                onClick={() => onToolChange('favicon')}
+              >
+                Favicon
               </button>
             </div>
           )}
@@ -480,6 +498,20 @@ export default class Intro extends Component<Props, State> {
                   }
                 >
                   EXIF strip
+                </a>
+                <a
+                  class={style.footerLink}
+                  href="/editor?tool=favicon"
+                  onClick={
+                    onOpenTool
+                      ? (e) => {
+                          e.preventDefault();
+                          onOpenTool('favicon');
+                        }
+                      : undefined
+                  }
+                >
+                  Favicon generator
                 </a>
               </div>
               <div class={style.footerCol}>
