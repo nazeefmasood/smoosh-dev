@@ -49,7 +49,16 @@ import * as wp2EncMt from 'entry-data:codecs/wp2/enc/wp2_enc_mt';
 import * as wp2Enc from 'entry-data:codecs/wp2/enc/wp2_enc';
 
 export function shouldCacheDynamically(url: string) {
-  return url.startsWith('/c/demo-');
+  if (url.startsWith('/c/demo-')) return true;
+  // Background-remover model + ONNX runtime wasm: large, rarely-changing
+  // assets. Cache on first use so the (~168 MB) model downloads once per
+  // visitor, then loads instantly and works offline.
+  if (url.startsWith('/c/')) {
+    const file = url.slice(url.lastIndexOf('/') + 1);
+    if (file.startsWith('rmbg-') && file.endsWith('.onnx')) return true;
+    if (file.startsWith('ort-wasm-') && file.endsWith('.wasm')) return true;
+  }
+  return false;
 }
 
 let initialJs = new Set([
