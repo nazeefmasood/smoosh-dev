@@ -65,6 +65,8 @@ interface State {
   resizeHeight: number | '';
   resizeLockAspect: boolean;
   resizePercent: number;
+  /** Which item is shown on the resize preview stage. */
+  previewId?: string;
 }
 
 /** Files above this size get a heads-up that processing may be slow. */
@@ -137,6 +139,151 @@ function labelForKey(key: string): string {
   if (key === 'cleaned') return 'Cleaned';
   if (key === 'resized') return 'Resized';
   return encoderMap[key as EncoderType].meta.label;
+}
+
+interface ResizeOpts {
+  mode: ResizeMode;
+  width: number | '';
+  height: number | '';
+  lockAspect: boolean;
+  percent: number;
+}
+
+/**
+ * Resolve the target size for one image given its natural dimensions and the
+ * resize options. Percent scales both axes; dimensions honours the aspect
+ * lock (whichever of width/height is provided drives the other).
+ */
+function computeResizeTarget(
+  sw: number,
+  sh: number,
+  o: ResizeOpts,
+): { width: number; height: number } {
+  if (o.mode === 'percent') {
+    const p = Math.max(1, o.percent) / 100;
+    return {
+      width: Math.max(1, Math.round(sw * p)),
+      height: Math.max(1, Math.round(sh * p)),
+    };
+  }
+  const w = typeof o.width === 'number' ? o.width : 0;
+  const h = typeof o.height === 'number' ? o.height : 0;
+  if (o.lockAspect) {
+    if (w && !h)
+      return { width: w, height: Math.max(1, Math.round((w * sh) / sw)) };
+    if (h && !w)
+      return { width: Math.max(1, Math.round((h * sw) / sh)), height: h };
+    if (w && h)
+      return { width: w, height: Math.max(1, Math.round((w * sh) / sw)) };
+    return { width: sw, height: sh };
+  }
+  return { width: w || sw, height: h || sh };
+}
+
+interface ResizePreviewProps {
+  file: File;
+  opts: ResizeOpts;
+}
+interface ResizePreviewState {
+  natWidth: number;
+  natHeight: number;
+  loaded: boolean;
+}
+
+/**
+ * Live WYSIWYG preview for the Resize tool: loads the image and paints it into
+ * a canvas at the current target size, shown at its true pixel size (capped to
+ * the stage) so you can see exactly how the scaled image looks before applying.
+ */
+class ResizePreview extends Component<ResizePreviewProps, ResizePreviewState> {
+  state: ResizePreviewState = { natWidth: 0, natHeight: 0, loaded: false };
+  private canvas?: HTMLCanvasElement;
+  private img?: HTMLImageElement;
+  private url?: string;
+
+  componentDidMount() {
+    this.load();
+  }
+  componentDidUpdate(prev: ResizePreviewProps) {
+    if (prev.file !== this.props.file) {
+      this.load();
+    } else {
+      this.draw();
+    }
+  }
+  componentWillUnmount() {
+    if (this.url) URL.revokeObjectURL(this.url);
+  }
+
+  private load() {
+    if (this.url) URL.revokeObjectURL(this.url);
+    const img = new Image();
+    this.url = URL.createObjectURL(this.props.file);
+    img.onload = () => {
+      this.img = img;
+      this.setState(
+        {
+          natWidth: img.naturalWidth,
+          natHeight: img.naturalHeight,
+          loaded: true,
+        },
+        () => this.draw(),
+      );
+    };
+    img.src = this.url;
+  }
+
+  private draw() {
+    const c = this.canvas;
+    const img = this.img;
+    if (!c || !img) return;
+    const { width, height } = computeResizeTarget(
+      img.naturalWidth,
+      img.naturalHeight,
+      this.props.opts,
+    );
+    c.width = width;
+    c.height = height;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.imageSmoothingEnabled = true;
+    (ctx as any).imageSmoothingQuality = 'high';
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(img, 0, 0, width, height);
+  }
+
+  render(
+    { opts }: ResizePreviewProps,
+    { natWidth, natHeight, loaded }: ResizePreviewState,
+  ) {
+    const target = loaded
+      ? computeResizeTarget(natWidth, natHeight, opts)
+      : { width: 0, height: 0 };
+    return (
+      <div class={style.stage}>
+        <div class={style.stageCanvasWrap}>
+          <canvas
+            class={style.previewCanvas}
+            ref={(el: HTMLCanvasElement | null) => {
+              this.canvas = el ?? undefined;
+            }}
+            style={{ maxWidth: '100%', maxHeight: '52vh' }}
+          />
+        </div>
+        {loaded && (
+          <div class={style.stageInfo}>
+            <span class={style.stageDims}>
+              {natWidth} × {natHeight}
+            </span>
+            <span class={style.stageArrow}>→</span>
+            <span class={style.stageDimsNew}>
+              {target.width} × {target.height} px
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
 }
 
 /** The done result with the smallest output file for an item, if any. */
@@ -286,35 +433,23 @@ export default class Tool extends Component<Props, State> {
       ),
     });
 
-  /**
-   * Resolve the target size for one image, given its natural dimensions and
-   * the current resize options. Percent scales both axes; dimensions honours
-   * the aspect lock (whichever of width/height is provided drives the other).
-   */
+  /** Current resize options bundled for the shared target calculation. */
+  private resizeOpts(): ResizeOpts {
+    const s = this.state;
+    return {
+      mode: s.resizeMode,
+      width: s.resizeWidth,
+      height: s.resizeHeight,
+      lockAspect: s.resizeLockAspect,
+      percent: s.resizePercent,
+    };
+  }
+
   private resizeTargetFor(
     sw: number,
     sh: number,
   ): { width: number; height: number } {
-    const s = this.state;
-    if (s.resizeMode === 'percent') {
-      const p = Math.max(1, s.resizePercent) / 100;
-      return {
-        width: Math.max(1, Math.round(sw * p)),
-        height: Math.max(1, Math.round(sh * p)),
-      };
-    }
-    const w = typeof s.resizeWidth === 'number' ? s.resizeWidth : 0;
-    const h = typeof s.resizeHeight === 'number' ? s.resizeHeight : 0;
-    if (s.resizeLockAspect) {
-      if (w && !h)
-        return { width: w, height: Math.max(1, Math.round((w * sh) / sw)) };
-      if (h && !w)
-        return { width: Math.max(1, Math.round((h * sw) / sh)), height: h };
-      if (w && h)
-        return { width: w, height: Math.max(1, Math.round((w * sh) / sw)) };
-      return { width: sw, height: sh };
-    }
-    return { width: w || sw, height: h || sh };
+    return computeResizeTarget(sw, sh, this.resizeOpts());
   }
 
   private addFiles = (files: File[]) => {
@@ -572,10 +707,13 @@ export default class Tool extends Component<Props, State> {
       resizeHeight,
       resizeLockAspect,
       resizePercent,
+      previewId,
     }: State,
   ) {
     const isWatermark = mode === 'watermark';
     const isResize = mode === 'resize';
+    const previewItem =
+      items.find((i) => i.id === previewId) || items[0] || undefined;
     const doneCount = items.reduce(
       (s, i) => s + i.results.filter((r) => r.status === 'done').length,
       0,
@@ -869,6 +1007,35 @@ export default class Tool extends Component<Props, State> {
             </div>
           )}
         </section>
+
+        {isResize && previewItem && (
+          <section class={style.editorSection}>
+            <ResizePreview file={previewItem.file} opts={this.resizeOpts()} />
+            {items.length > 1 && (
+              <div
+                class={style.filmstrip}
+                role="tablist"
+                aria-label="Preview image"
+              >
+                {items.map((it) => (
+                  <button
+                    class={`${style.filmThumb}${
+                      it.id === previewItem.id
+                        ? ' ' + style.filmThumbActive
+                        : ''
+                    }`}
+                    role="tab"
+                    aria-selected={it.id === previewItem.id}
+                    title={it.file.name}
+                    onClick={() => this.setState({ previewId: it.id })}
+                  >
+                    <img src={it.previewUrl} alt={it.file.name} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
 
         <section class={style.toolArea}>
           {items.length === 0 ? (

@@ -341,6 +341,94 @@
   cursor: default;
 }
 
+/* ---- Resize editor stage (live preview) ---- */
+.editorSection {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: var(--spacing-24) var(--gutter) 0;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-16);
+}
+
+.stageCanvasWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 200px;
+  padding: var(--spacing-24);
+  border: 1px solid var(--line-strong);
+  /* Checkerboard so transparent PNGs read correctly at the target size. */
+  background-color: var(--color-bone-white);
+  background-image: linear-gradient(45deg, var(--gray-100) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--gray-100) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--gray-100) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--gray-100) 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+}
+
+.previewCanvas {
+  display: block;
+  image-rendering: auto;
+}
+
+.stageInfo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-10);
+  font-size: var(--text-body-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.stageDims {
+  color: var(--text-muted);
+}
+
+.stageArrow {
+  color: var(--text-faint);
+}
+
+.stageDimsNew {
+  color: var(--text);
+}
+
+.filmstrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-8);
+  justify-content: center;
+  margin-top: var(--spacing-8);
+}
+
+.filmThumb {
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.filmThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.filmThumbActive {
+  border-color: var(--color-ink-black);
+  border-width: 2px;
+}
+
 /* ---- Buttons ---- */
 .btnPrimary,
 .btnAdd,
