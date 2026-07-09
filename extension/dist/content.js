@@ -194,17 +194,39 @@
 `;
     document.head.appendChild(css);
   }
+  var scanTimer = null;
+  function scheduleScan(delay = 300) {
+    if (scanTimer) return;
+    scanTimer = setTimeout(() => {
+      scanTimer = null;
+      const run = () => scan();
+      if ('requestIdleCallback' in window)
+        window.requestIdleCallback(run, { timeout: 800 });
+      else run();
+    }, delay);
+  }
   function init() {
     injectStyles();
-    scan();
-    const mo = new MutationObserver(() => scan());
+    scheduleScan(0);
+    const mo = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.type === 'childList' && m.addedNodes.length) {
+          scheduleScan();
+          break;
+        }
+        if (m.type === 'attributes') {
+          scheduleScan();
+          break;
+        }
+      }
+    });
     mo.observe(document.body, {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['src', 'srcset', 'style'],
+      attributeFilter: ['src', 'srcset'],
     });
-    setInterval(scan, 2500);
+    setInterval(() => scheduleScan(0), 4e3);
     chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
       if (msg?.type === 'smoosh-ping') reply({ ok: true, site: SITE });
       if (msg?.type === 'smoosh-scan')
@@ -214,7 +236,7 @@
   }
   if (SITE) {
     init();
-    setTimeout(scan, 1500);
+    setTimeout(() => scheduleScan(0), 1500);
   }
   if (!SITE) {
     chrome.runtime.onMessage.addListener((msg, _sender, reply) => {

@@ -227,19 +227,50 @@ function injectStyles() {
   document.head.appendChild(css);
 }
 
+/**
+ * Debounce scanning. Gemini/ChatGPT fire hundreds of mutations per second;
+ * running a full DOM walk on each one freezes the page. Coalesce into one
+ * pass after things settle, scheduled when the browser is idle.
+ */
+let scanTimer = null;
+function scheduleScan(delay = 300) {
+  if (scanTimer) return;
+  scanTimer = setTimeout(() => {
+    scanTimer = null;
+    const run = () => scan();
+    if ('requestIdleCallback' in window)
+      window.requestIdleCallback(run, { timeout: 800 });
+    else run();
+  }, delay);
+}
+
 function init() {
   injectStyles();
-  scan();
-  // MutationObserver for SPA streaming + a periodic fallback rescan, since
-  // images often gain layout/sizes a few frames after insertion.
-  const mo = new MutationObserver(() => scan());
+  scheduleScan(0);
+  // Only watch structural changes + image source swaps. Watching `style` on
+  // the subtree is the single biggest source of mutation noise on these SPAs
+  // and is not needed — layout settling is handled by the periodic fallback.
+  const mo = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      if (m.type === 'childList' && m.addedNodes.length) {
+        scheduleScan();
+        break;
+      }
+      if (m.type === 'attributes') {
+        scheduleScan();
+        break;
+      }
+    }
+  });
   mo.observe(document.body, {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['src', 'srcset', 'style'],
+    attributeFilter: ['src', 'srcset'],
   });
-  setInterval(scan, 2500);
+  // Slow fallback for images that gain layout without a mutation
+  // (rare, but cheap at this cadence).
+  setInterval(() => scheduleScan(0), 4000);
   chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     if (msg?.type === 'smoosh-ping') reply({ ok: true, site: SITE });
     if (msg?.type === 'smoosh-scan')
@@ -251,7 +282,7 @@ function init() {
 if (SITE) {
   init();
   // In case the document was already idle before injection, kick a scan.
-  setTimeout(scan, 1500);
+  setTimeout(() => scheduleScan(0), 1500);
 }
 
 // Always answer pings even off-site, so the popup can detect "not on a page".
