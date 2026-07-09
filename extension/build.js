@@ -33,6 +33,10 @@ function copyStatic() {
     path.join(__dirname, 'manifest.json'),
     path.join(out, 'manifest.json'),
   );
+  // Popup assets (HTML/CSS are static; popup.js is bundled separately).
+  for (const f of ['popup.html', 'popup.css']) {
+    fs.copyFileSync(path.join(__dirname, 'src', f), path.join(out, f));
+  }
   const iconsOut = path.join(out, 'icons');
   if (!fs.existsSync(iconsOut)) fs.mkdirSync(iconsOut, { recursive: true });
   for (const f of fs.readdirSync(path.join(__dirname, 'icons'))) {
@@ -41,7 +45,7 @@ function copyStatic() {
 }
 
 /** Files that only need to be passed through (not bundled off a gwm import). */
-const passThrough = ['content.js', 'background.js'];
+const passThrough = ['content.js', 'background.js', 'popup.js'];
 
 async function build() {
   const ctxOptions = (entry, outfile, extra = {}) => ({

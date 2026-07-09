@@ -6,9 +6,6 @@
     : location.hostname.includes('gemini')
     ? 'gemini'
     : null;
-  if (SITE) {
-    init();
-  }
   var ACTIONS = {
     gemini: [
       {
@@ -70,33 +67,54 @@
       );
     });
   }
-  function isGeneratedImage(img) {
-    if (!img.src) return false;
-    const r = img.getBoundingClientRect();
-    if (r.width < 160 || r.height < 160) return false;
-    if (img.closest('svg')) return false;
-    return true;
+  var MIN = 140;
+  function isCandidate(el) {
+    if (!el || el.closest?.('[data-smoosh-wrap="1"]')) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width < MIN || r.height < MIN) return false;
+    if (el.tagName === 'IMG') {
+      if (!el.src && !el.currentSrc && !el.srcset) return false;
+      return true;
+    }
+    const bg = getComputedStyle(el).backgroundImage;
+    if (bg && bg !== 'none' && bg.includes('url')) return true;
+    return false;
   }
-  function attach(img) {
-    if (img.dataset.smoosh) return;
-    img.dataset.smoosh = '1';
+  function srcOf(el) {
+    if (el.tagName === 'IMG') {
+      return (
+        el.currentSrc ||
+        el.src ||
+        (el.srcset && el.srcset.split(',')[0].trim().split(' ')[0]) ||
+        ''
+      );
+    }
+    const m = (getComputedStyle(el).backgroundImage.match(
+      /url\((['"]?)([^'")]+)\1\)/,
+    ) || [])[2];
+    return m || '';
+  }
+  function attach(el) {
+    if (el.dataset?.smoosh) return;
+    if (el.dataset) el.dataset.smoosh = '1';
+    else el.setAttribute('data-smoosh', '1');
     const wrap =
-      img.parentElement?.dataset?.smooshWrap === '1'
-        ? img.parentElement
-        : makeWrap(img);
-    mountButtons(wrap);
+      el.parentElement?.dataset?.smooshWrap === '1'
+        ? el.parentElement
+        : makeWrap(el);
+    mountButtons(wrap, el);
   }
-  function makeWrap(img) {
-    const parent = img.parentElement;
+  function makeWrap(el) {
+    const parent = el.parentElement;
     const wrap = document.createElement('div');
     wrap.dataset.smooshWrap = '1';
     wrap.style.cssText =
       'position:relative;display:inline-block;max-width:100%';
-    parent.insertBefore(wrap, img);
-    wrap.appendChild(img);
+    parent.insertBefore(wrap, el);
+    wrap.appendChild(el);
     return wrap;
   }
-  function mountButtons(wrap) {
+  function mountButtons(wrap, el) {
     const bar = document.createElement('div');
     bar.className = 'smoosh-bar';
     for (const action of ACTIONS) {
@@ -108,23 +126,22 @@
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        onAction(wrap, action, btn);
+        onAction(el, action, btn);
       });
       bar.appendChild(btn);
     }
     wrap.appendChild(bar);
   }
-  async function onAction(wrap, action, btn) {
-    const img = wrap.querySelector('img');
-    if (!img || btn.dataset.busy) return;
+  async function onAction(el, action, btn) {
+    if (btn.dataset.busy) return;
     btn.dataset.busy = '1';
     const original = btn.textContent;
     btn.textContent = 'Working\u2026';
     try {
-      const blob = await fetchImage(img);
+      const blob = await fetchImage(el);
       const result = await process(blob, action);
       if (result.error) throw new Error(result.error);
-      download(result.blob, img, action);
+      download(result.blob);
     } catch (err) {
       console.error('[Smoosh]', err);
       btn.textContent = 'Failed';
@@ -134,25 +151,21 @@
       if (btn.textContent === 'Working\u2026') btn.textContent = original;
     }
   }
-  async function fetchImage(img) {
-    let url = img.currentSrc || img.src;
-    if (!url && img.srcset) {
-      const candidates = img.srcset
-        .split(',')
-        .map((s) => s.trim().split(' ')[0]);
-      url = candidates[candidates.length - 1];
-    }
+  async function fetchImage(el) {
+    const url = srcOf(el);
+    if (!url) throw new Error('no image src');
     const res = await fetch(url, { credentials: 'include' });
     if (!res.ok) throw new Error(`fetch ${res.status}`);
     return res.blob();
   }
-  function download(blob, img, action) {
+  function download(blob) {
     const ext = extForType(blob.type);
     const stamp = /* @__PURE__ */ new Date()
       .toISOString()
       .slice(0, 19)
       .replace(/[:T]/g, '-');
-    const tag = action.mode === 'watermark' ? 'clean' : 'compressed';
+    const tag =
+      (ACTIONS[0] && ACTIONS[0].mode) === 'watermark' ? 'clean' : 'compressed';
     const a = document.createElement('a');
     const url = URL.createObjectURL(blob);
     a.href = url;
@@ -168,24 +181,48 @@
     if (type.includes('jpeg') || type.includes('jpg')) return '.jpg';
     return '.png';
   }
-  function scan(root = document.body) {
-    for (const img of root.querySelectorAll('img')) {
-      if (isGeneratedImage(img)) attach(img);
-    }
-  }
-  function init() {
-    injectStyles();
-    scan();
-    const mo = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        for (const node of m.addedNodes) {
-          if (node.nodeType !== 1) continue;
-          if (node.tagName === 'IMG' && isGeneratedImage(node)) attach(node);
-          else if (node.querySelectorAll) scan(node);
-        }
+  function deepQueryAll(root) {
+    const out = [];
+    const stack = [root];
+    while (stack.length) {
+      const node = stack.pop();
+      if (!node || !node.querySelectorAll) continue;
+      for (const el of node.querySelectorAll(
+        'img, [style*="background-image"], [style*="background"]',
+      )) {
+        out.push(el);
       }
-    });
-    mo.observe(document.body, { childList: true, subtree: true });
+      for (const el of node.querySelectorAll('*')) {
+        if (el.shadowRoot) stack.push(el.shadowRoot);
+      }
+    }
+    return out;
+  }
+  function scan() {
+    let attached = 0;
+    for (const el of deepQueryAll(document.body)) {
+      if (isCandidate(el) && !el.dataset?.smoosh) {
+        attach(el);
+        attached++;
+      }
+    }
+    return attached;
+  }
+  function stats() {
+    const imgs = deepQueryAll(document.body);
+    let big = 0;
+    for (const el of imgs) {
+      const r = el.getBoundingClientRect();
+      if (r.width >= MIN && r.height >= MIN) big++;
+    }
+    let buttons = document.querySelectorAll('.smoosh-btn').length;
+    return {
+      site: SITE,
+      host: location.host,
+      images: imgs.filter((e) => e.tagName === 'IMG').length,
+      bigCandidates: big,
+      buttonsAttached: buttons,
+    };
   }
   function injectStyles() {
     if (document.getElementById('smoosh-style')) return;
@@ -202,5 +239,34 @@
 .smoosh-btn--ghost:hover{color:#000;border-color:#000;filter:none}
 `;
     document.head.appendChild(css);
+  }
+  function init() {
+    injectStyles();
+    scan();
+    const mo = new MutationObserver(() => scan());
+    mo.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['src', 'srcset', 'style'],
+    });
+    setInterval(scan, 2500);
+    chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+      if (msg?.type === 'smoosh-ping') reply({ ok: true, site: SITE });
+      if (msg?.type === 'smoosh-scan')
+        reply({ attached: scan(), stats: stats() });
+      return true;
+    });
+  }
+  if (SITE) {
+    init();
+    setTimeout(scan, 1500);
+  }
+  if (!SITE) {
+    chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+      if (msg?.type === 'smoosh-ping') reply({ ok: true, site: null });
+      if (msg?.type === 'smoosh-scan') reply({ site: null });
+      return true;
+    });
   }
 })();
