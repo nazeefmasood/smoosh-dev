@@ -3,7 +3,7 @@
   "name": "Smoosh — AI image cleaner",
   "version": "0.1.0",
   "description": "Remove Gemini watermarks and compress AI-generated images right inside Gemini & ChatGPT. Runs locally — your images never leave your browser.",
-  "permissions": ["activeTab", "storage"],
+  "permissions": ["activeTab", "storage", "offscreen", "downloads"],
   "host_permissions": [
     "https://gemini.google.com/*",
     "https://chatgpt.com/*",
@@ -31,12 +31,7 @@
       "run_at": "document_idle"
     }
   ],
-  "web_accessible_resources": [
-    {
-      "resources": ["worker.js", "gwm.js"],
-      "matches": ["https://gemini.google.com/*", "https://chatgpt.com/*"]
-    }
-  ],
+  "web_accessible_resources": [],
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
@@ -45,7 +40,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "smoosh@nazeefmasood.dev",
-      "strict_min_version": "115.0"
+      "strict_min_version": "128.0"
     }
   }
 }

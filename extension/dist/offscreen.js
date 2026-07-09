@@ -14855,38 +14855,31 @@ function removeWatermarkFromImageDataSync(imageData, options = {}) {
   });
 }
 
-// src/worker.js
-self.onmessage = async (e) => {
-  const { id, blob, mode, options } = e.data;
-  try {
-    const bitmap = await createImageBitmap(blob);
-    const { width, height } = bitmap;
-    const canvas = new OffscreenCanvas(width, height);
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(bitmap, 0, 0);
-    bitmap.close();
-    if (mode === 'watermark') {
-      const imageData = ctx.getImageData(0, 0, width, height);
-      removeWatermarkFromImageDataSync(imageData, options || {});
-      ctx.putImageData(imageData, 0, 0);
+// src/offscreen.js
+chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg?.type !== 'smoosh-run') return;
+  (async () => {
+    try {
+      const { blob, mode, options = {} } = msg;
+      const bitmap = await createImageBitmap(blob);
+      const { width, height } = bitmap;
+      const canvas = new OffscreenCanvas(width, height);
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(bitmap, 0, 0);
+      bitmap.close();
+      if (mode === 'watermark') {
+        const imageData = ctx.getImageData(0, 0, width, height);
+        removeWatermarkFromImageDataSync(imageData, options);
+        ctx.putImageData(imageData, 0, 0);
+      }
+      const fmt = options.format || 'image/png';
+      const quality =
+        typeof options.quality === 'number' ? options.quality : 0.9;
+      const outBlob = await canvas.convertToBlob({ type: fmt, quality });
+      reply({ blob: outBlob });
+    } catch (err) {
+      reply({ error: String((err && err.message) || err) });
     }
-    const outBlob = await encode(canvas, options || {});
-    self.postMessage({ id, blob: outBlob });
-  } catch (err) {
-    self.postMessage({ id, error: String((err && err.message) || err) });
-  }
-};
-async function encode(canvas, options) {
-  const fmt = options.format || 'image/png';
-  const quality = typeof options.quality === 'number' ? options.quality : 0.92;
-  if (typeof canvas.convertToBlob === 'function') {
-    return canvas.convertToBlob({ type: fmt, quality });
-  }
-  return new Promise((resolve, reject) =>
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error('encode failed'))),
-      fmt,
-      quality,
-    ),
-  );
-}
+  })();
+  return true;
+});

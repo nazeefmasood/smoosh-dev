@@ -1,10 +1,11 @@
 // Bundles the extension sources with esbuild.
 //
-// - worker.js: the heavy image-processing worker. It imports the vendored
-//   Gemini watermark remover (../src/vendor/gwm) and bundles it into one file
-//   so the extension ships a single self-contained worker with no module
-//   resolution at runtime.
-// - content.js / background.js / popup.js: plain ES modules, copied through.
+// - offscreen.js: the image-processing offscreen document. It imports the
+//   vendored Gemini watermark remover (../src/vendor/gwm) and bundles it into
+//   one file, so the extension ships a single self-contained script with no
+//   module resolution at runtime. Runs in the extension's own origin to
+//   sidestep the host page's worker-src CSP.
+// - content.js / background.js / popup.js: plain ES modules, passed through.
 const esbuild = require('esbuild');
 const fs = require('fs');
 const path = require('path');
@@ -33,8 +34,8 @@ function copyStatic() {
     path.join(__dirname, 'manifest.json'),
     path.join(out, 'manifest.json'),
   );
-  // Popup assets (HTML/CSS are static; popup.js is bundled separately).
-  for (const f of ['popup.html', 'popup.css']) {
+  // Popup + offscreen static HTML/CSS (their JS is bundled separately).
+  for (const f of ['popup.html', 'popup.css', 'offscreen.html']) {
     fs.copyFileSync(path.join(__dirname, 'src', f), path.join(out, f));
   }
   const iconsOut = path.join(out, 'icons');
@@ -61,9 +62,9 @@ async function build() {
   });
 
   const builds = [
-    // Worker: bundled, imports gwm from the host repo.
+    // Offscreen document script: bundled, imports gwm from the host repo.
     {
-      ...ctxOptions('worker.js', 'worker.js', { format: 'esm' }),
+      ...ctxOptions('offscreen.js', 'offscreen.js', { format: 'esm' }),
       alias: { gwm: path.join(root, 'src/vendor/gwm/sdk/image-data.js') },
     },
   ];

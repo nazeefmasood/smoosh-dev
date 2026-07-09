@@ -37,43 +37,19 @@ const ACTIONS = {
   ],
 }[SITE];
 
-let worker = null;
-let nextId = 1;
-const pending = new Map();
-
-function getWorker() {
-  if (worker) return worker;
-  const url = chrome.runtime.getURL('worker.js');
-  worker = new Worker(url, { type: 'module' });
-  worker.onmessage = (e) => {
-    const { id, blob, error } = e.data || {};
-    const resolve = pending.get(id);
-    if (!resolve) return;
-    pending.delete(id);
-    resolve(error ? { error } : { blob });
-  };
-  worker.onerror = (e) => {
-    // Fail every pending job — the worker is dead.
-    for (const [, resolve] of pending)
-      resolve({ error: e.message || 'worker error' });
-    pending.clear();
-    worker = null;
-  };
-  return worker;
-}
-
+// Processing runs in the extension's offscreen document (via the background
+// service worker), because this page's CSP blocks extension workers. The
+// content script only fetches the bytes and hands them off.
 function process(blob, action) {
-  const id = nextId++;
   return new Promise((resolve) => {
-    pending.set(id, resolve);
-    getWorker().postMessage(
+    chrome.runtime.sendMessage(
       {
-        id,
+        type: 'smoosh-process',
         blob,
         mode: action.mode,
         options: { format: action.format, quality: 0.9 },
       },
-      [blob],
+      (res) => resolve(res || { error: 'no response' }),
     );
   });
 }
@@ -163,11 +139,12 @@ async function onAction(el, action, btn) {
     const blob = await fetchImage(el);
     const result = await process(blob, action);
     if (result.error) throw new Error(result.error);
-    download(result.blob);
+    btn.textContent = 'Saved ✓';
+    setTimeout(() => (btn.textContent = original), 1500);
   } catch (err) {
     console.error('[Smoosh]', err);
     btn.textContent = 'Failed';
-    setTimeout(() => (btn.textContent = original), 1500);
+    setTimeout(() => (btn.textContent = original), 1800);
   } finally {
     btn.dataset.busy = '';
     if (btn.textContent === 'Working…') btn.textContent = original;
@@ -180,28 +157,6 @@ async function fetchImage(el) {
   const res = await fetch(url, { credentials: 'include' });
   if (!res.ok) throw new Error(`fetch ${res.status}`);
   return res.blob();
-}
-
-function download(blob) {
-  const ext = extForType(blob.type);
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-  const tag =
-    (ACTIONS[0] && ACTIONS[0].mode) === 'watermark' ? 'clean' : 'compressed';
-  const a = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  a.href = url;
-  a.download = `smoosh-${tag}-${stamp}${ext}`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
-}
-
-function extForType(type) {
-  if (type.includes('png')) return '.png';
-  if (type.includes('webp')) return '.webp';
-  if (type.includes('jpeg') || type.includes('jpg')) return '.jpg';
-  return '.png';
 }
 
 /** Collect candidate elements, piercing open shadow roots (Gemini uses them). */
