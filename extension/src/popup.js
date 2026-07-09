@@ -17,7 +17,10 @@ function send(tabId, msg, timeoutMs = 1500) {
     chrome.tabs.sendMessage(tabId, msg, (res) => {
       if (done) return;
       done = true;
-      resolve(res);
+      // Reading lastError clears the "Unchecked runtime.lastError" warning
+      // that fires when the content script isn't listening yet.
+      const err = chrome.runtime.lastError;
+      resolve(err ? null : res);
     });
     setTimeout(() => {
       if (done) return;

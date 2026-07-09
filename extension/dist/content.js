@@ -30,16 +30,24 @@
       },
     ],
   }[SITE];
-  function process(blob, action) {
+  async function process(blob, action) {
+    const buffer = await blob.arrayBuffer();
     return new Promise((resolve) => {
       chrome.runtime.sendMessage(
         {
           type: 'smoosh-process',
-          blob,
+          buffer,
+          mimeType: blob.type,
           mode: action.mode,
           options: { format: action.format, quality: 0.9 },
         },
-        (res) => resolve(res || { error: 'no response' }),
+        (res) => {
+          if (chrome.runtime.lastError) {
+            resolve({ error: chrome.runtime.lastError.message });
+            return;
+          }
+          resolve(res || { error: 'no response' });
+        },
       );
     });
   }

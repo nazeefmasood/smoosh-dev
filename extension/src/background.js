@@ -44,7 +44,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
       await ensureOffscreen();
       const res = await chrome.runtime.sendMessage({
         type: 'smoosh-run',
-        blob: msg.blob,
+        buffer: msg.buffer,
+        mimeType: msg.mimeType,
         mode: msg.mode,
         options: msg.options,
       });

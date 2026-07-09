@@ -10,7 +10,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.type !== 'smoosh-run') return;
   (async () => {
     try {
-      const { blob, mode, options = {} } = msg;
+      const { buffer, mimeType, mode, options = {} } = msg;
+      // Reconstruct the Blob from the ArrayBuffer shipped over by the
+      // background (sendMessage doesn't reliably clone Blob).
+      const blob = new Blob([buffer], { type: mimeType || 'image/png' });
       const bitmap = await createImageBitmap(blob);
       const { width, height } = bitmap;
       const canvas = new OffscreenCanvas(width, height);

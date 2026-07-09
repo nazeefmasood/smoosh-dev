@@ -40,16 +40,29 @@ const ACTIONS = {
 // Processing runs in the extension's offscreen document (via the background
 // service worker), because this page's CSP blocks extension workers. The
 // content script only fetches the bytes and hands them off.
-function process(blob, action) {
+//
+// We send the image as an ArrayBuffer, not a Blob — chrome.runtime.sendMessage
+// does not reliably structured-clone Blob across content → background →
+// offscreen, and the Blob arrives as undefined (createImageBitmap then throws
+// "not of type Blob"). ArrayBuffer clones cleanly every hop.
+async function process(blob, action) {
+  const buffer = await blob.arrayBuffer();
   return new Promise((resolve) => {
     chrome.runtime.sendMessage(
       {
         type: 'smoosh-process',
-        blob,
+        buffer,
+        mimeType: blob.type,
         mode: action.mode,
         options: { format: action.format, quality: 0.9 },
       },
-      (res) => resolve(res || { error: 'no response' }),
+      (res) => {
+        if (chrome.runtime.lastError) {
+          resolve({ error: chrome.runtime.lastError.message });
+          return;
+        }
+        resolve(res || { error: 'no response' });
+      },
     );
   });
 }

@@ -18,7 +18,8 @@
       chrome.tabs.sendMessage(tabId, msg, (res) => {
         if (done) return;
         done = true;
-        resolve(res);
+        const err = chrome.runtime.lastError;
+        resolve(err ? null : res);
       });
       setTimeout(() => {
         if (done) return;
