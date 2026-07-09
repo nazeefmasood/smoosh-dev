@@ -118,6 +118,14 @@
       });
       bar.appendChild(btn);
     }
+    const brand = document.createElement('a');
+    brand.className = 'smoosh-brand';
+    brand.href = 'https://smoosh-dev.vercel.app';
+    brand.target = '_blank';
+    brand.rel = 'noopener noreferrer';
+    brand.textContent = 'Smoosh \u2197';
+    brand.title = 'Open smoosh-dev.vercel.app';
+    bar.appendChild(brand);
     wrap.appendChild(bar);
   }
   async function onAction(el, action, btn) {
@@ -202,6 +210,8 @@
 .smoosh-btn[data-busy="1"]{opacity:.65;cursor:progress;transform:none;filter:grayscale(.3)}
 .smoosh-btn--ghost{background:rgba(255,254,247,.9);backdrop-filter:blur(6px);color:#666;border:1px solid #aaa}
 .smoosh-btn--ghost:hover{color:#000;border-color:#000;filter:none}
+.smoosh-brand{display:inline-flex;align-items:center;font-family:'Switzer','Inter',ui-sans-serif,system-ui,sans-serif;font-size:11px;font-weight:400;color:#fff;text-decoration:none;background:rgba(0,0,0,.5);backdrop-filter:blur(6px);border-radius:999px;padding:6px 10px;opacity:.85;transition:opacity .15s ease}
+.smoosh-brand:hover{opacity:1}
 `;
     document.head.appendChild(css);
   }
