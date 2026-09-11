@@ -7,6 +7,7 @@ import Footer from '../Footer';
 import WorkerBridge from '../worker-bridge';
 import { decodeImage, compressImage } from '../pipeline';
 import { encoderMap, EncoderType, EncoderState } from '../feature-meta';
+import { createZip, uniqueZipName } from '../util/zip';
 import { removeWatermarkFromImage } from 'vendor/gwm';
 import { readMeta, stripMeta, MetaResult } from 'vendor/exif';
 import type SnackBarElement from 'shared/custom-els/snack-bar';
@@ -65,6 +66,9 @@ interface State {
   quality: number;
   processing: boolean;
   processedCount: number;
+  /** Building the download zip (can take a moment for big batches). */
+  zipping: boolean;
+  zipProgress: number;
   modalId?: string;
   comparePct: number;
 }
@@ -110,6 +114,21 @@ function seoName(filename: string): string {
       .replace(/^-+|-+$/g, '')
       .replace(/-{2,}/g, '-') || 'image';
   return ext ? `${slug}.${ext}` : slug;
+}
+
+/** Folder name used for a result key when a zip holds several formats. */
+function folderForKey(key: string): string {
+  return labelForKey(key)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/** Filename for the "download all" archive, per tool. */
+function zipNameFor(mode: ToolMode): string {
+  if (mode === 'watermark') return 'smoosh-watermark-removed.zip';
+  if (mode === 'metadata') return 'smoosh-metadata-stripped.zip';
+  return 'smoosh-compressed.zip';
 }
 
 function encoderStateFor(type: EncoderType, quality?: number): EncoderState {
@@ -221,6 +240,8 @@ export default class Tool extends Component<Props, State> {
     quality: 75,
     processing: false,
     processedCount: 0,
+    zipping: false,
+    zipProgress: 0,
     comparePct: 50,
   };
 
@@ -532,10 +553,72 @@ export default class Tool extends Component<Props, State> {
     a.remove();
   }
 
-  private downloadAll = () => {
-    for (const item of this.state.items)
-      for (const r of item.results)
-        if (r.status === 'done') this.triggerDownload(r);
+  /** Save a Blob under `name` via a throwaway object URL. */
+  private saveBlob(blob: Blob, name: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Revoking immediately can cancel the download in some browsers.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
+  /**
+   * Collect every finished result into a single zip.
+   *
+   * Firing one <a download> per result gets throttled or blocked by browsers
+   * once there are more than a handful, which silently loses files — one
+   * archive always arrives complete. When several formats were produced per
+   * image they go into a folder each, so `photo.png` from OxiPNG and from
+   * Browser PNG stay distinct.
+   */
+  private downloadAll = async () => {
+    if (this.state.zipping) return;
+
+    const entries: { name: string; blob: Blob }[] = [];
+    const used = new Set<string>();
+    const multiFormat =
+      targetsFor(this.props.mode, this.state.subMode, this.state.encoderType)
+        .length > 1;
+
+    for (const item of this.state.items) {
+      for (const r of item.results) {
+        if (r.status !== 'done' || !r.file) continue;
+        const folder = multiFormat ? `${folderForKey(r.key)}/` : '';
+        entries.push({
+          name: uniqueZipName(folder + seoName(r.file.name), used),
+          blob: r.file,
+        });
+      }
+    }
+
+    if (!entries.length) return;
+    // A zip around a single file is just friction.
+    if (entries.length === 1) {
+      this.saveBlob(entries[0].blob, entries[0].name);
+      return;
+    }
+
+    this.setState({ zipping: true, zipProgress: 0 });
+    try {
+      const zip = await createZip(entries, (done) =>
+        this.setState({ zipProgress: done }),
+      );
+      this.saveBlob(zip, zipNameFor(this.props.mode));
+      this.props.showSnack(
+        `Downloaded ${entries.length} files as a zip (${prettyBytes(
+          zip.size,
+        )})`,
+      );
+    } catch (err) {
+      console.error(err);
+      this.props.showSnack('Could not build the zip — please try again');
+    } finally {
+      this.setState({ zipping: false, zipProgress: 0 });
+    }
   };
 
   private openModal = (id: string) =>
@@ -553,6 +636,8 @@ export default class Tool extends Component<Props, State> {
       quality,
       processing,
       processedCount,
+      zipping,
+      zipProgress,
       modalId,
       comparePct,
     }: State,
@@ -786,8 +871,16 @@ export default class Tool extends Component<Props, State> {
                       Compress result{doneCount === 1 ? '' : 's'} →
                     </button>
                   )}
-                  <button class={style.btnPrimary} onClick={this.downloadAll}>
-                    Download all ({doneCount})
+                  <button
+                    class={style.btnPrimary}
+                    onClick={this.downloadAll}
+                    disabled={zipping}
+                  >
+                    {zipping
+                      ? `Zipping ${zipProgress}/${doneCount}…`
+                      : doneCount === 1
+                      ? 'Download (1)'
+                      : `Download all (${doneCount}) as .zip`}
                   </button>
                 </div>
               )}
