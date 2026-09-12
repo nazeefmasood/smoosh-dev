@@ -399,9 +399,27 @@ export default class Tool extends Component<Props, State> {
     this.abortController = new AbortController();
     this.setState({ processing: true, processedCount: 0 });
 
+    // Drain a queue rather than iterate a snapshot of `items`: images dropped
+    // in while a batch is running are picked up by the same run, so "process
+    // all" keeps meaning all of them.
+    const handled = new Set<string>();
+    const nextItem = (): Item | undefined =>
+      this.state.items.find((i) => !handled.has(i.id));
+
     try {
-      for (const item of this.state.items) {
+      while (true) {
         if (this.abortController.signal.aborted) break;
+        let queued = nextItem();
+        if (!queued) {
+          // setState is async, so an item added moments ago may not be on
+          // `this.state` yet. Let pending updates land, then look once more
+          // before calling the batch finished.
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          queued = nextItem();
+          if (!queued) break;
+        }
+        const item: Item = queued;
+        handled.add(item.id);
         const signal = this.abortController.signal;
 
         if (this.props.mode === 'watermark') {
@@ -502,6 +520,7 @@ export default class Tool extends Component<Props, State> {
               status: 'error',
               error: 'Decode',
             });
+          this.setState((p) => ({ processedCount: p.processedCount + 1 }));
           continue;
         }
         for (const t of targets) {
